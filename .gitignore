@@ -1,9 +1,67 @@
-# Build files
+# Build directories
 build/
+cmake-build-*/
+dist/
+out/
 bin/
+lib/
 
-# IDE files
+# Object files and libraries
+*.o
+*.obj
+*.so
+*.dylib
+*.a
+*.lib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# IDE and editor files
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+log/
+logs/
+
+# Test and coverage reports
+coverage/
+coverage.info
+coverage.xml
+*.gcno
+*.gcda
+*.gcov
+lcov.info
+htmlcov/
+test_results/
+test_reports/
+
+# Configuration files with sensitive data
+auth_config.json
+.env
+*.key
+*.pem
+*.crt
 
 # Dependencies
 external/
+node_modules/
+
+# OS specific
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Backup files
+*.bak
+*.backup
