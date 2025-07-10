@@ -5,8 +5,8 @@ TEST(OrderBookTest, UpdateAndPrint) {
     hft::OrderBook book;
     hft::Command cmd;
     cmd.type = hft::CommandType::MARKET_DATA;
-    cmd.bids.push_back({hft::price_to_int(100.50), 10});
-    cmd.asks.push_back({hft::price_to_int(100.55), 5});
+    cmd.bids.push_back({100.50, 10});
+    cmd.asks.push_back({100.55, 5});
 
     book.update(cmd);
 

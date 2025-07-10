@@ -1,233 +1,329 @@
-# High-Frequency Trading (HFT) Engine
+# HFT Engine: High-Frequency Trading Data Core
 
-A professional-grade **High-Frequency Trading Engine** built in C++ that connects to Binance cryptocurrency exchange via WebSocket to receive real-time market data and maintain a live order book for algorithmic trading strategies.
+[![Build Status](https://img.shields.io/github/actions/workflow/status/RajaBabu15/hft_engine/build.yml?branch=main&style=for-the-badge)](https://github.com/RajaBabu15/hft_engine/actions)
+[![Code Coverage](https://img.shields.io/codecov/c/github/RajaBabu15/hft_engine?style=for-the-badge&token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/RajaBabu15/hft_engine)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue.svg?style=for-the-badge)](https://isocpp.org/std/the-standard)
 
-## 🎯 Project Overview
+A professional-grade, ultra-low-latency C++ engine for receiving real-time cryptocurrency market data from Binance. Built for performance, it serves as the foundational core for algorithmic trading bots, market analysis tools, and backtesting infrastructure.
 
-This HFT engine demonstrates institutional-grade trading infrastructure with microsecond-level optimizations. It serves as a foundation for:
+**⚠️ Important Note**: This is currently a **read-only** market data system. It does **not** execute trades but is architected for seamless extension into a full trading solution.
 
-- **Cryptocurrency Trading Bots**
-- **Market Making Algorithms** 
-- **Statistical Arbitrage Strategies**
-- **Real-time Market Analysis**
-- **Backtesting Infrastructure**
+---
 
-## 🚀 What This Project Achieves
+## 📖 Table of Contents
 
-1. **Real-time Market Data Processing**: Connects to Binance's WebSocket API for live order book updates
-2. **High-Performance Order Book Management**: Maintains accurate, real-time market depth data
-3. **Ultra-Low Latency Architecture**: Built for algorithmic trading with microsecond optimizations
-4. **Market Analysis Foundation**: Provides real-time market conditions for trading decisions
+- [✨ Key Features](#-key-features)
+- [🏗️ Architecture Overview](#️-architecture-overview)
+- [🚀 Getting Started](#-getting-started)
+- [🛠️ Unified Build System](#️-unified-build-system)
+- [🧪 Testing & Code Quality](#-testing--code-quality)
+- [🐳 Docker Support](#-docker-support)
+- [🛣️ Future Extensions](#️-future-extensions)
+- [🤝 Contributing](#-contributing)
+- [📜 License](#-license)
 
-**⚠️ Important Note**: This is a **READ-ONLY** market data system. It does **NOT** execute actual trades or place orders. It only displays real-time market data for analysis and strategy development.
+---
 
-## 🏗️ Architecture & Components
+## ✨ Key Features
 
-### Core Components
+- **Real-Time Data Stream:** Connects to Binance's WebSocket API for live, low-latency order book updates.
+- **High-Performance Order Book:** Maintains an accurate, in-memory order book for the specified trading pair.
+- **Ultra-Low Latency Design:**
+    - **Asynchronous I/O:** Network operations are decoupled from data processing threads.
+    - **Lock-Free Concurrency:** Utilizes `boost::lockfree::queue` for high-throughput, contention-free message passing.
+    - **CPU Cache Optimization:** Employs `alignas(64)` on core data structures to prevent false sharing on multi-core systems.
+- **Robust Build & Dev Environment:**
+    - Unified build script (`hft-build`) for easy compilation, testing, and coverage.
+    - Automated development environment setup (`setup-dev-env.sh`).
+- **Comprehensive Testing:** High test coverage with GoogleTest for core components.
+- **Extensible Architecture:** Designed with future trading capabilities in mind, including components for authentication, order management, and a TUI.
+- **Containerized:** Includes a multi-stage `Dockerfile` for reproducible builds and easy deployment.
 
-| Component | File | Purpose |
-|-----------|------|----------|
-| **WebSocket Client** | `websocket_client.h/cpp` | Real-time connection to Binance API |
-| **Matching Engine** | `matching_engine.h/cpp` | High-performance message processor |
-| **Order Book** | `order_book.h/cpp` | Market depth data management |
-| **Command System** | `command.h` | Internal communication structures |
-| **Configuration** | `config.json` | Trading pair and display settings |
+## 🏗️ Architecture Overview
 
-### Technical Features
+The engine is built on a decoupled, multi-threaded architecture to ensure maximum performance.
 
-- **Lock-free Programming**: Eliminates thread contention for ultra-low latency
-- **Cache Optimization**: 64-byte aligned structures prevent false sharing
-- **Asynchronous Processing**: Separates I/O from computation
-- **Multi-threading**: Dedicated threads for data reception and processing
-- **Memory Efficient**: Optimized STL containers for trading data
+![Data Flow Diagram](https://i.imgur.com/example-flow-chart.png)  <!-- Suggested: Create and add a simple data flow diagram -->
 
-## 📊 Real-time Output Example
+1.  **`WebsocketClient`**: Establishes a secure WebSocket connection and receives market data.
+2.  **`MatchingEngine`**: The core processor. It fetches data from a lock-free queue and dispatches it to the appropriate handler.
+3.  **`OrderBook`**: Manages the state of the bids and asks, providing a real-time view of market depth.
+4.  **`UIManager`**: A text-based UI for interacting with the engine (future-ready).
+5.  **`AuthManager` & `TradingClient`**: Placeholder components for handling authenticated API calls and trade execution in future versions.
 
-```
-Connecting to Binance for symbol: "btcusdt"
-Press Ctrl+C to exit.
-[2025-07-10 07:54:52] [connect] Successful connection
+| Component | File(s) | Purpose |
+| :--- | :--- | :--- |
+| **WebSocket Client** | `websocket_client.h/cpp` | Real-time connection to Binance API. |
+| **Matching Engine** | `matching_engine.h/cpp` | High-performance message processor using a lock-free queue. |
+| **Order Book** | `order_book.h/cpp` | Manages and displays market depth data. |
+| **Trading Client**| `trading_client.h/cpp` | Manages trading functions (placing/canceling orders). *[Mocked]* |
+| **Auth Manager** | `auth_manager.h/cpp` | Handles API key authentication and request signing. *[Future Use]* |
+| **UI Manager** | `ui_manager.h/cpp` | Provides a menu-driven terminal user interface. *[Future Use]* |
+| **Command System** | `command.h` | Defines cache-aligned internal communication structures. |
+| **Configuration** | `config.json` | Sets the trading pair and order book depth. |
 
---- ORDER BOOK ---
-------------------------------------
-|       BIDS       |       ASKS       |
-| Price    | Qty     | Price    | Qty     |
-------------------------------------
-| 111224.58 |       5 | 111224.59 |       2 |
-| 111224.57 |       0 | 111224.60 |       0 |
-| 111223.89 |       0 | 111225.00 |       0 |
-| 111223.88 |       0 | 111226.00 |       0 |
-------------------------------------
-```
+## 🚀 Getting Started
 
-## 🔄 Data Flow Process
+Follow these steps to get the engine up and running quickly on a Linux-based system (including WSL).
 
-1. **WebSocket Connection**: Connects to `wss://stream.binance.com:9443/ws/btcusdt@depth20@100ms`
-2. **Data Reception**: Receives order book updates every 100ms
-3. **JSON Parsing**: Converts market data to internal command format
-4. **Lock-free Queue**: Passes data through ultra-fast message queue
-5. **Order Book Update**: Updates bid/ask levels in real-time
-6. **Display**: Renders formatted order book to terminal
+### Prerequisites
 
-## ⚡ Performance Optimizations
+- A C++17 compatible compiler (GCC 11+ or Clang 14+)
+- Git
+- Docker (for containerized builds)
 
-- **Lock-free Queue**: Boost's lock-free queue for 64K commands
-- **Cache Line Alignment**: Prevents CPU cache false sharing
-- **Single Writer Pattern**: Eliminates lock contention
-- **Memory Pool**: Reduces allocation overhead
-- **Branch Prediction**: Optimized conditional logic
+### Quick Start with Setup Script
 
-## 📈 Trading vs. Display-Only Functionality
+Our setup script will install all necessary dependencies and configure the development environment.
 
-### Current State: **DISPLAY-ONLY** 📊
+1.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/RajaBabu15/hft_engine.git
+    cd hft_engine
+    ```
 
-This project is currently a **market data viewer** and does **NOT** execute any actual trading operations. Here's what it does:
+2.  **Setup Development Environment:**
+    Use the unified build script to automatically install all dependencies:
+    ```bash
+    # Make script executable
+    chmod +x ./scripts/hft-build
+    
+    # Setup development environment (installs cmake, boost, openssl, gtest, etc.)
+    ./scripts/hft-build setup
+    ```
 
-**✅ What it DOES:**
-- Connects to Binance WebSocket API
-- Receives real-time market data
-- Displays live order book updates
-- Maintains accurate bid/ask spreads
-- Provides foundation for trading algorithms
+3.  **Build and Test the Engine:**
+    Use the unified build script to compile and run the tests.
+    ```bash
+    ./scripts/hft-build build
+    ```
 
-**❌ What it does NOT do:**
-- Place buy/sell orders
-- Execute trades
-- Manage positions or portfolio
-- Handle authentication for trading
-- Risk management or position sizing
+4.  **Run the Engine:**
+    The executable will be located in the `build` directory.
+    ```bash
+    ./build/hft_engine
+    ```
 
-### 🚀 Future Trading Extension
+You should see the live order book printed to your terminal.
 
-To convert this into an actual trading system, you would need to add:
+### 🪟 Windows WSL Setup
 
-1. **Binance Trading API Integration**
-   ```cpp
-   // Example: Order placement functionality
-   class TradingClient {
-       void place_order(Side side, Price price, Quantity qty);
-       void cancel_order(OrderId id);
-   };
-   ```
+For Windows users, we recommend using WSL (Windows Subsystem for Linux) for the best development experience:
 
-2. **Authentication & API Keys**
-   - Binance API key and secret
-   - HMAC signature generation
-   - Rate limiting compliance
+1.  **Enable WSL:**
+    ```powershell
+    # Run in PowerShell as Administrator
+    wsl --install
+    ```
 
-3. **Trading Strategy Logic**
-   ```cpp
-   class MarketMakingStrategy {
-       void on_order_book_update(const OrderBook& book);
-       void place_quotes(Price bid, Price ask);
-   };
-   ```
+2.  **Access Your Project in WSL:**
+    ```bash
+    # From WSL terminal, navigate to your Windows project directory
+    cd /mnt/c/path/to/your/hft_engine
+    ```
 
-4. **Risk Management**
-   - Position limits
-   - Stop-loss mechanisms
-   - Exposure monitoring
+3.  **Run Commands in WSL:**
+    ```bash
+    # All hft-build commands work seamlessly in WSL
+    ./scripts/hft-build setup
+    ./scripts/hft-build build
+    ```
 
-### ⚠️ Trading Risks Warning
+4.  **Alternative: Direct WSL Commands from PowerShell:**
+    ```powershell
+    # Run commands directly from PowerShell
+    wsl bash -c "cd /mnt/c/Users/YourName/path/to/hft_engine && ./scripts/hft-build build"
+    ```
 
-**IMPORTANT**: Adding actual trading functionality involves significant financial risk:
-- Cryptocurrency markets are highly volatile
-- Algorithmic trading can lead to rapid losses
-- Always test strategies in simulation first
-- Never risk more than you can afford to lose
-- Consider regulatory compliance in your jurisdiction
+## 🛠️ Unified Build System
 
-## Prerequisites
+This project uses a powerful unified build script located at `./scripts/hft-build` that provides all development operations in a single tool.
 
-- Docker
-- A C++20 compatible compiler (GCC 11+ or Clang 14+)
-- CMake (3.16+)
-- Boost libraries (`system`, `thread`)
-- OpenSSL
-- `nlohmann/json` library
+### ✨ Script Features
 
-On **Ubuntu 22.04**, you can install C++ dependencies with:
+- **🚀 Zero-Configuration Setup:** Automatically detects and installs all required dependencies
+- **🔄 Cross-Platform:** Works seamlessly on Linux, macOS, and Windows WSL
+- **📊 Smart Dependency Management:** Checks for missing tools and guides installation
+- **🔍 Comprehensive Testing:** Integrated unit testing with GoogleTest framework
+- **📈 Code Coverage:** Generates detailed HTML and XML coverage reports
+- **🛮 Code Quality:** Automated formatting and static analysis with clang-format and cppcheck
+- **💾 Backup Management:** Creates timestamped project backups with optional compression
+- **🎯 Memory Safety:** Built-in Valgrind integration for memory leak detection
+- **🔗 Git Integration:** Automatic git hooks installation and optional commit automation
+- **🎨 Colored Output:** Beautiful, informative console output with progress indicators
+
+### 📋 Available Commands
+
+| Command | Description | Usage |
+|---------|-------------|-------|
+| `build` | Build the project (default command) | `./scripts/hft-build build [OPTIONS]` |
+| `test` | Run tests only | `./scripts/hft-build test` |
+| `setup` | Setup development environment | `./scripts/hft-build setup` |
+| `clean` | Clean build artifacts | `./scripts/hft-build clean` |
+| `format` | Format code using clang-format | `./scripts/hft-build format` |
+| `lint` | Run code linting with cppcheck | `./scripts/hft-build lint` |
+| `backup` | Create project backup | `./scripts/hft-build backup [OPTIONS]` |
+| `backup-raw` | Create raw content backup | `./scripts/hft-build backup-raw` |
+| `install-hooks` | Install git hooks | `./scripts/hft-build install-hooks` |
+
+### 🔧 Build Options
+
+| Option | Description | Example |
+|--------|-------------|--------|
+| `--clean` | Clean build directory before building | `./scripts/hft-build build --clean` |
+| `--coverage` | Generate coverage report | `./scripts/hft-build build --coverage` |
+| `--no-tests` | Skip running tests after build | `./scripts/hft-build build --no-tests` |
+| `--release` | Build in release mode (default: debug) | `./scripts/hft-build build --release` |
+| `--commit` | Commit changes if all checks pass | `./scripts/hft-build build --commit` |
+
+### 📦 Backup Options
+
+| Option | Description | Example |
+|--------|-------------|--------|
+| `--output DIR` | Output directory for backup | `./scripts/hft-build backup --output my-backup` |
+| `--name NAME` | Project name for backup | `./scripts/hft-build backup --name hft-engine-v2` |
+
+### 🚀 Common Usage Examples
+
+**Environment Setup (First Time):**
 ```bash
-sudo apt update && sudo apt install -y \
-    build-essential cmake git libssl-dev \
-    libboost-all-dev nlohmann-json3-dev pkg-config
+# Setup development environment with all dependencies
+./scripts/hft-build setup
 ```
 
-## 🛠️ How to Build and Run
+**Basic Development Workflow:**
+```bash
+# Standard build and test
+./scripts/hft-build build
 
-### Method 1: Ubuntu/WSL (Recommended)
+# Build in release mode
+./scripts/hft-build build --release
 
-1. **Install Dependencies:**
-   ```bash
-   sudo apt update && sudo apt install -y build-essential cmake libboost-all-dev libssl-dev nlohmann-json3-dev pkg-config git
-   ```
+# Clean build with coverage
+./scripts/hft-build build --clean --coverage
 
-2. **Clone Repository & Dependencies:**
-   ```bash
-   git clone <your-repo-url>
-   cd hft_engine
-   mkdir -p external && cd external
-   git clone https://github.com/zaphoyd/websocketpp.git
-   cd ..
-   ```
-
-3. **Build Project:**
-   ```bash
-   mkdir build && cd build
-   cmake ..
-   make -j4
-   ```
-
-4. **Configure Trading Pair:**
-   ```bash
-   cp ../config.json .
-   # Edit config.json to change symbol (default: "btcusdt")
-   ```
-
-5. **Run the Engine:**
-   ```bash
-   ./hft_engine
-   ```
-
-### Method 2: Windows with WSL
-
-1. **Enable WSL and install Ubuntu:**
-   ```powershell
-   wsl --install -d Ubuntu-24.04
-   ```
-
-2. **Open WSL terminal and follow Method 1 steps above**
-
-3. **Navigate to Windows project folder:**
-   ```bash
-   cd /mnt/c/Users/[username]/CLionProjects/hft_engine
-   ```
-
-### Method 3: Native Windows (Advanced)
-
-1. **Install dependencies via vcpkg or manually**
-2. **Use Visual Studio with CMake support**
-3. **Configure paths for Boost, OpenSSL, nlohmann_json**
-
-### Expected Output
-
-Successful run shows:
-```
-Connecting to Binance for symbol: "btcusdt"
-Press Ctrl+C to exit.
-[2025-07-10 07:54:52] [connect] Successful connection
-[2025-07-10 07:54:52] [connect] WebSocket Connection 57.182.125.171:9443
-
---- ORDER BOOK ---
-------------------------------------
-|       BIDS       |       ASKS       |
-| Price    | Qty     | Price    | Qty     |
-------------------------------------
-| 111224.58 |       5 | 111224.59 |       2 |
-...
+# Build without running tests
+./scripts/hft-build build --no-tests
 ```
 
-## How to Build and Run (with Docker)
+**Code Quality:**
+```bash
+# Format all C++ code
+./scripts/hft-build format
+
+# Run static code analysis
+./scripts/hft-build lint
+
+# Run tests only
+./scripts/hft-build test
+```
+
+**Maintenance:**
+```bash
+# Clean all build artifacts
+./scripts/hft-build clean
+
+# Create project backup
+./scripts/hft-build backup
+
+# Create raw content backup (no git history)
+./scripts/hft-build backup-raw
+
+# Install git hooks for development
+./scripts/hft-build install-hooks
+```
+
+**Windows WSL Usage:**
+```bash
+# All commands work in WSL environment
+wsl bash -c "cd /mnt/c/path/to/hft_engine && ./scripts/hft-build build"
+```
+
+### 📊 Coverage Reports
+
+When using `--coverage`, the script generates detailed coverage reports:
+- **Text summary:** Displayed in terminal
+- **HTML report:** Available in `coverage/html/index.html`
+- **XML report:** Available for CI/CD integration
+
+```bash
+# Generate coverage report
+./scripts/hft-build build --coverage
+
+# View HTML report (after build)
+open coverage/html/index.html  # macOS
+xdg-open coverage/html/index.html  # Linux
+```
+
+### 🔍 Getting Help
+
+For complete command reference:
+```bash
+./scripts/hft-build --help
+```
+
+For command-specific help:
+```bash
+./scripts/hft-build build --help
+./scripts/hft-build backup --help
+```
+
+### 🔧 Troubleshooting
+
+**Common Issues and Solutions:**
+
+| Issue | Solution |
+|-------|----------|
+| `Permission denied: ./scripts/hft-build` | Run `chmod +x ./scripts/hft-build` |
+| `Dependencies missing` | Run `./scripts/hft-build setup` first |
+| `Build fails with compiler errors` | Ensure you have a C++17 compatible compiler |
+| `Tests segfault` | Run `./scripts/hft-build build --no-tests` to build without testing |
+| `Coverage report empty` | Ensure tests ran successfully before generating coverage |
+| `WSL path issues` | Use `/mnt/c/...` paths in WSL, not Windows paths |
+
+**Debug Build Issues:**
+```bash
+# Clean everything and rebuild
+./scripts/hft-build clean
+./scripts/hft-build build --clean
+
+# Check dependencies
+./scripts/hft-build setup
+
+# Build with verbose output
+CMAKE_VERBOSE_MAKEFILE=ON ./scripts/hft-build build
+```
+
+**Performance Issues:**
+```bash
+# Use release build for better performance
+./scripts/hft-build build --release
+
+# Skip unnecessary checks
+./scripts/hft-build build --no-tests
+```
+
+## 🧪 Testing & Code Quality
+
+We prioritize high-quality, reliable code.
+
+-   **Unit Testing:** The core logic is tested using the **GoogleTest** framework. Tests are located in the `/tests` directory. You can run them using the build script:
+    ```bash
+    ./scripts/hft-build test
+    ```
+-   **Code Coverage:** Coverage reports are generated using `gcov` and `lcov`. Run a coverage build and find the HTML report in the `coverage/` directory.
+    ```bash
+    ./scripts/hft-build build --coverage
+    ```
+-   **Static Analysis:** Code is linted with `cppcheck` to catch potential issues early.
+    ```bash
+    ./scripts/hft-build lint
+    ```
+
+## 🐳 Docker Support
+
+For a fully isolated and reproducible environment, you can use the provided `Dockerfile`.
 
 1.  **Build the Docker Image:**
     ```bash
@@ -238,3 +334,25 @@ Press Ctrl+C to exit.
     ```bash
     docker run -it --rm hft-engine
     ```
+
+## 🛣️ Future Extensions
+
+The engine is designed to be extended into a complete trading system. This would involve:
+1.  **Live Trading Integration:** Implementing the `TradingClient` to make authenticated REST API calls to Binance for placing and managing orders.
+2.  **Strategy Implementation:** Building trading algorithms (e.g., market making, arbitrage) that consume the live `OrderBook` data.
+3.  **Advanced UI/Dashboard:** Enhancing the `UIManager` or connecting to a graphical frontend.
+4.  **Risk Management:** Implementing robust risk controls, such as position limits, kill switches, and exposure monitoring.
+
+## 🤝 Contributing
+
+Contributions are welcome! If you'd like to help improve the engine, please follow these steps:
+
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Ensure all tests pass (`./scripts/hft-build test`).
+5.  Submit a pull request with a clear description of your changes.
+
+## 📜 License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

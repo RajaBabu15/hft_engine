@@ -1,18 +1,18 @@
 #pragma once
 #include "command.h"
-#include <map>
-#include <vector>
-#include <string>
 #include <iostream>
+#include <map>
+#include <string>
+#include <vector>
 
 namespace hft {
-    class OrderBook {
-    public:
-        void update(const Command& cmd);
-        void print_book(int depth) const;
+class OrderBook {
+public:
+  void update(const Command &cmd);
+  void print_book(int depth) const;
 
-    private:
-        std::map<Price, Quantity, std::greater<Price>> bids_;
-        std::map<Price, Quantity> asks_;
-    };
-}
+private:
+  std::map<Price, Quantity, std::greater<Price>> bids_;
+  std::map<Price, Quantity> asks_;
+};
+} // namespace hft

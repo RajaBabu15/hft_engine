@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# HFT Engine Build Script
-# Production-grade build system inspired by Amazon's brazil-build
+# HFT Engine Unified Build Script
+# Comprehensive build system with backup, setup, and development tools
 # Author: Raja Babu
 # Date: 2025-07-10
 
@@ -13,6 +13,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_ROOT/build"
 COVERAGE_DIR="$PROJECT_ROOT/coverage"
 TEST_REPORTS_DIR="$PROJECT_ROOT/test_reports"
+BACKUP_DIR="$PROJECT_ROOT/hft-build-backup"
 MIN_COVERAGE_THRESHOLD=90
 
 # Colors for output
@@ -50,21 +51,39 @@ print_banner() {
 }
 
 print_usage() {
-    echo "Usage: $0 [OPTIONS]"
+    echo "Usage: $0 [COMMAND] [OPTIONS]"
     echo ""
-    echo "OPTIONS:"
+    echo "COMMANDS:"
+    echo "  build           Build the project (default)"
+    echo "  test            Run tests only"
+    echo "  setup           Setup development environment"
+    echo "  backup          Create project backup"
+    echo "  backup-raw      Create raw content backup"
+    echo "  clean           Clean build artifacts"
+    echo "  install-hooks   Install git hooks"
+    echo "  format          Format code using clang-format"
+    echo "  lint            Run code linting"
+    echo ""
+    echo "BUILD OPTIONS:"
     echo "  --clean         Clean build directory before building"
-    echo "  --test-only     Run tests only (skip build)"
     echo "  --coverage      Generate coverage report"
     echo "  --no-tests      Skip running tests"
     echo "  --release       Build in release mode (default: debug)"
     echo "  --commit        Commit changes if all checks pass"
-    echo "  --help          Show this help message"
+    echo ""
+    echo "BACKUP OPTIONS:"
+    echo "  --output DIR    Output directory for backup (default: hft-build-backup)"
+    echo "  --name NAME     Project name for backup (default: hft_engine)"
     echo ""
     echo "EXAMPLES:"
-    echo "  $0                    # Standard build and test"
-    echo "  $0 --clean --coverage # Clean build with coverage"
-    echo "  $0 --commit           # Build, test, and commit if successful"
+    echo "  $0                      # Standard build and test"
+    echo "  $0 build --clean --coverage # Clean build with coverage"
+    echo "  $0 test                 # Run tests only"
+    echo "  $0 setup                # Setup development environment"
+    echo "  $0 backup               # Create project backup"
+    echo "  $0 backup-raw           # Create raw content backup"
+    echo "  $0 clean                # Clean build artifacts"
+    echo "  $0 format               # Format all code"
 }
 
 cleanup_on_exit() {
@@ -177,7 +196,7 @@ run_tests() {
     # Set up test environment
     export GTEST_OUTPUT="xml:$TEST_REPORTS_DIR/gtest_results.xml"
     
-    if ./hft_tests; then
+    if ./tests/hft_tests; then
         log_success "All tests passed"
         return 0
     else
@@ -296,22 +315,464 @@ commit_changes() {
     fi
 }
 
+# =================================================================
+# BACKUP FUNCTIONS
+# =================================================================
+
+create_backup() {
+    local output_dir="${BACKUP_OUTPUT:-$BACKUP_DIR}"
+    local project_name="${PROJECT_NAME:-hft_engine}"
+    
+    log_info "Creating backup for project: $project_name"
+    log_info "Backup directory: $output_dir"
+    
+    # Create backup directory if it doesn't exist
+    mkdir -p "$output_dir"
+    
+    local backup_filename="${project_name}_backup_$(date +%Y%m%d_%H%M%S).bkpf"
+    local backup_path="$output_dir/$backup_filename"
+    
+    # Define file patterns and directories
+    local include_patterns=(
+        "*.cpp" "*.c" "*.cc" "*.cxx"     # C++ source files
+        "*.h" "*.hpp" "*.hxx"            # Header files
+        "*.py" "*.pyx" "*.pyi"           # Python files
+        "*.cmake" "*.txt"                # CMake files
+        "*.md" "*.rst"                   # Documentation
+        "*.json" "*.yaml" "*.yml"        # Configuration files
+        "*.sh" "*.bat" "*.ps1"           # Scripts
+        "*.gitignore" "*.gitattributes"  # Git files
+        "CMakeLists.txt" "README.md" "Dockerfile" "Makefile"
+    )
+    
+    local exclude_directories=(
+        "build" "Build" "BUILD"
+        "cmake-build-debug" "cmake-build-release"
+        ".git" ".svn" ".hg"
+        ".idea" ".vscode" ".vs"
+        "external" "third_party" "deps"
+        "node_modules" "__pycache__"
+        "hft-build-backup"
+    )
+    
+    # Create backup JSON
+    {
+        echo "{"
+        echo "  \"metadata\": {"
+        echo "    \"projectName\": \"$project_name\","
+        echo "    \"backupDate\": \"$(date '+%Y-%m-%d %H:%M:%S')\","
+        echo "    \"projectRoot\": \"$PROJECT_ROOT\","
+        echo "    \"backupVersion\": \"1.0\","
+        echo "    \"generatedBy\": \"HFT Engine Unified Build Script\","
+        echo "    \"fileCount\": 0"
+        echo "  },"
+        echo "  \"files\": ["
+        
+        local first_file=true
+        local file_count=0
+        
+        for pattern in "${include_patterns[@]}"; do
+            find "$PROJECT_ROOT" -name "$pattern" -type f 2>/dev/null | while read -r file; do
+                if [[ ! -r "$file" ]]; then
+                    continue
+                fi
+                
+                local relative_path="${file#$PROJECT_ROOT/}"
+                
+                # Skip excluded directories
+                local skip_file=false
+                for exclude_dir in "${exclude_directories[@]}"; do
+                    if [[ "$relative_path" == *"$exclude_dir"* ]]; then
+                        skip_file=true
+                        break
+                    fi
+                done
+                
+                if [ "$skip_file" = true ]; then
+                    continue
+                fi
+                
+                local filename=$(basename "$file")
+                local directory=$(dirname "$relative_path")
+                if [[ "$directory" == "." ]]; then
+                    directory=""
+                fi
+                
+                local file_size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+                local last_modified=$(stat -c%y "$file" 2>/dev/null | cut -d. -f1 || echo "")
+                
+                if [[ "$first_file" != true ]]; then
+                    echo ","
+                fi
+                first_file=false
+                
+                echo "    {"
+                echo "      \"directory\": \"$directory\","
+                echo "      \"fileName\": \"$filename\","
+                echo "      \"relativePath\": \"$relative_path\","
+                echo "      \"size\": $file_size,"
+                echo "      \"lastModified\": \"$last_modified\""
+                echo -n "    }"
+                
+                ((file_count++))
+                echo "  Added: $relative_path" >&2
+            done
+        done
+        
+        echo ""
+        echo "  ]"
+        echo "}"
+    } > "$backup_path"
+    
+    # Update file count
+    local actual_count=$(grep -c "relativePath" "$backup_path" 2>/dev/null || echo "0")
+    sed -i "s/\"fileCount\": 0/\"fileCount\": $actual_count/" "$backup_path"
+    
+    log_success "Backup created successfully!"
+    log_info "File: $backup_path"
+    log_info "Files included: $actual_count"
+}
+
+create_raw_backup() {
+    local output_dir="${BACKUP_OUTPUT:-$BACKUP_DIR}"
+    local project_name="${PROJECT_NAME:-hft_engine}"
+    
+    log_info "Creating raw content backup for project: $project_name"
+    
+    mkdir -p "$output_dir"
+    
+    local backup_filename="${project_name}_backup_raw_$(date +%Y%m%d_%H%M%S).bkpf"
+    local backup_path="$output_dir/$backup_filename"
+    
+    # Define file extensions to include
+    local include_extensions=(
+        ".cpp" ".c" ".cc" ".cxx"        # C++ source files
+        ".h" ".hpp" ".hxx"              # Header files
+        ".py" ".pyx" ".pyi"             # Python files
+        ".cmake" ".txt"                 # CMake files
+        ".md" ".rst"                    # Documentation
+        ".json" ".yaml" ".yml"          # Configuration files
+        ".sh" ".bat" ".ps1"             # Scripts
+        ".gitignore" ".gitattributes"   # Git files
+    )
+    
+    local special_files=(
+        "CMakeLists.txt" "README.md" "Dockerfile" "Makefile" ".gitignore"
+    )
+    
+    local exclude_directories=(
+        "build" "Build" "BUILD"
+        "cmake-build-debug" "cmake-build-release"
+        ".git" ".svn" ".hg"
+        ".idea" ".vscode" ".vs"
+        "external" "third_party" "deps"
+        "node_modules" "__pycache__"
+        "hft-build-backup"
+    )
+    
+    # Function to escape JSON strings (minimal escaping)
+    escape_json() {
+        local input="$1"
+        printf '%s' "$input" | sed 's/\\/\\\\/g; s/"/\\"/g'
+    }
+    
+    # Function to check if extension is included
+    is_extension_included() {
+        local extension="$1"
+        for inc_ext in "${include_extensions[@]}"; do
+            if [[ "$extension" == "$inc_ext" ]]; then
+                return 0
+            fi
+        done
+        return 1
+    }
+    
+    # Function to check if file is special
+    is_special_file() {
+        local filename="$1"
+        for special_file in "${special_files[@]}"; do
+            if [[ "$filename" == "$special_file" ]]; then
+                return 0
+            fi
+        done
+        return 1
+    }
+    
+    log_info "Scanning for files..."
+    
+    local file_count=0
+    local json_files=""
+    
+    # Process all files
+    while IFS= read -r -d '' file; do
+        local relative_path="${file#$PROJECT_ROOT/}"
+        
+        # Skip excluded directories
+        local skip_file=false
+        for exclude_dir in "${exclude_directories[@]}"; do
+            if [[ "$relative_path" == *"$exclude_dir"* ]]; then
+                skip_file=true
+                break
+            fi
+        done
+        
+        if [ "$skip_file" = true ]; then
+            continue
+        fi
+        
+        local filename=$(basename "$file")
+        local extension="${filename##*.}"
+        if [[ "$filename" == "$extension" ]]; then
+            extension=""
+        else
+            extension=".$extension"
+        fi
+        
+        # Check if file should be included
+        if is_extension_included "$extension" || is_special_file "$filename"; then
+            if content=$(cat "$file" 2>/dev/null); then
+                local directory=$(dirname "$relative_path")
+                if [[ "$directory" == "." ]]; then
+                    directory=""
+                fi
+                
+                local file_size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+                local last_modified=$(stat -c%y "$file" 2>/dev/null | cut -d. -f1 || echo "")
+                
+                # Escape content for JSON
+                local escaped_content=$(escape_json "$content")
+                
+                # Add comma if not first file
+                if [[ $file_count -gt 0 ]]; then
+                    json_files="${json_files},"
+                fi
+                
+                # Add file to JSON
+                json_files="${json_files}
+    {
+      \"directory\": \"$(escape_json "$directory")\",
+      \"fileName\": \"$(escape_json "$filename")\",
+      \"extension\": \"$(escape_json "$extension")\",
+      \"relativePath\": \"$(escape_json "$relative_path")\",
+      \"size\": $file_size,
+      \"lastModified\": \"$(escape_json "$last_modified")\",
+      \"content\": \"$escaped_content\"
+    }"
+                
+                ((file_count++))
+                echo "  Added: $relative_path"
+            fi
+        fi
+    done < <(find "$PROJECT_ROOT" -type f -print0)
+    
+    # Create backup JSON
+    local backup_date=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    local json_content="{
+  \"metadata\": {
+    \"projectName\": \"$(escape_json "$project_name")\",
+    \"backupDate\": \"$(escape_json "$backup_date")\",
+    \"projectRoot\": \"$(escape_json "$PROJECT_ROOT")\",
+    \"fileCount\": $file_count,
+    \"backupVersion\": \"1.0\",
+    \"generatedBy\": \"HFT Engine Unified Build Script\"
+  },
+  \"files\": [$json_files
+  ]
+}"
+    
+    # Write to file
+    if echo "$json_content" > "$backup_path"; then
+        log_success "Raw content backup created successfully!"
+        log_info "File: $backup_path"
+        log_info "Files included: $file_count"
+    else
+        log_error "Error creating raw content backup"
+        return 1
+    fi
+}
+
+# =================================================================
+# SETUP FUNCTIONS
+# =================================================================
+
+setup_development_environment() {
+    log_info "Setting up development environment..."
+    
+    # Detect OS
+    local os_type="unknown"
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        os_type="linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        os_type="macos"
+    fi
+    
+    # Install dependencies based on OS
+    if [ "$os_type" = "linux" ]; then
+        install_dependencies_ubuntu
+    elif [ "$os_type" = "macos" ]; then
+        install_dependencies_macos
+    else
+        log_warning "Unsupported OS type: $OSTYPE"
+        log_info "Please install dependencies manually"
+    fi
+    
+    # Setup external dependencies
+    setup_external_dependencies
+    
+    # Setup git hooks
+    install_git_hooks
+    
+    log_success "Development environment setup completed!"
+}
+
+install_dependencies_ubuntu() {
+    log_info "Installing dependencies for Ubuntu/Debian..."
+    
+    sudo apt update
+    sudo apt install -y \
+        build-essential \
+        cmake \
+        git \
+        libssl-dev \
+        libboost-all-dev \
+        nlohmann-json3-dev \
+        pkg-config \
+        lcov \
+        gcovr \
+        valgrind \
+        cppcheck \
+        clang-format
+    
+    log_success "Ubuntu dependencies installed"
+}
+
+install_dependencies_macos() {
+    log_info "Installing dependencies for macOS..."
+    
+    if ! command -v brew &> /dev/null; then
+        log_error "Homebrew not found. Please install Homebrew first:"
+        log_info "https://brew.sh/"
+        exit 1
+    fi
+    
+    brew install \
+        cmake \
+        boost \
+        openssl \
+        nlohmann-json \
+        lcov \
+        cppcheck \
+        clang-format
+    
+    log_success "macOS dependencies installed"
+}
+
+setup_external_dependencies() {
+    log_info "Setting up external dependencies..."
+    
+    mkdir -p "$PROJECT_ROOT/external"
+    
+    # Clone WebSocket++ if not already present
+    if [ ! -d "$PROJECT_ROOT/external/websocketpp" ]; then
+        log_info "Cloning WebSocket++ library..."
+        git clone https://github.com/zaphoyd/websocketpp.git "$PROJECT_ROOT/external/websocketpp"
+        log_success "WebSocket++ cloned successfully"
+    else
+        log_info "WebSocket++ already exists"
+    fi
+}
+
+install_git_hooks() {
+    log_info "Installing Git hooks..."
+    
+    mkdir -p "$PROJECT_ROOT/.git/hooks"
+    
+    # Create a simple pre-commit hook
+    cat > "$PROJECT_ROOT/.git/hooks/pre-commit" << 'EOF'
+#!/bin/bash
+# Simple pre-commit hook that runs build and tests
+echo "Running pre-commit checks..."
+if ! ./scripts/hft-build build --no-commit; then
+    echo "Pre-commit checks failed!"
+    exit 1
+fi
+echo "Pre-commit checks passed!"
+EOF
+    
+    chmod +x "$PROJECT_ROOT/.git/hooks/pre-commit"
+    log_success "Git hooks installed"
+}
+
+# =================================================================
+# CODE FORMATTING AND LINTING
+# =================================================================
+
+format_code() {
+    log_info "Formatting code with clang-format..."
+    
+    if ! command -v clang-format &> /dev/null; then
+        log_error "clang-format not found. Please install clang-format"
+        return 1
+    fi
+    
+    # Find all C++ files
+    local cpp_files=$(find "$PROJECT_ROOT/src" "$PROJECT_ROOT/include" -name "*.cpp" -o -name "*.h" -o -name "*.hpp" 2>/dev/null || true)
+    
+    if [ -n "$cpp_files" ]; then
+        echo "$cpp_files" | while read -r file; do
+            if [ -f "$file" ]; then
+                clang-format -i "$file"
+                log_info "Formatted: $file"
+            fi
+        done
+        log_success "Code formatting completed"
+    else
+        log_warning "No C++ files found to format"
+    fi
+}
+
+lint_code() {
+    log_info "Running code linting..."
+    
+    if ! command -v cppcheck &> /dev/null; then
+        log_error "cppcheck not found. Please install cppcheck"
+        return 1
+    fi
+    
+    # Ensure the test reports directory exists
+    mkdir -p "$TEST_REPORTS_DIR"
+    local LINT_REPORT_PATH="$TEST_REPORTS_DIR/lint_results.txt"
+
+    # Run cppcheck on source files
+    if [ -d "$PROJECT_ROOT/src" ]; then
+        cppcheck --enable=all --inconclusive --std=c++17 "$PROJECT_ROOT/src" "$PROJECT_ROOT/include" 2>&1 | tee "$LINT_REPORT_PATH"
+        log_success "Code linting completed - results saved to $LINT_REPORT_PATH"
+    else
+        log_warning "No source directory found"
+    fi
+}
+
 # Parse command line arguments
+COMMAND="build"  # Default command
 CLEAN_BUILD=false
-TEST_ONLY=false
 ENABLE_COVERAGE=false
 SKIP_TESTS=false
 BUILD_TYPE="Debug"
-AUTO_COMMIT=false
+AUTO_COMMIT=true  # Changed default to true for convenience
+BACKUP_OUTPUT=""
+PROJECT_NAME=""
+
+# Parse first argument as command if it doesn't start with --
+if [[ $# -gt 0 && "$1" != --* ]]; then
+    COMMAND="$1"
+    shift
+fi
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --clean)
             CLEAN_BUILD=true
-            shift
-            ;;
-        --test-only)
-            TEST_ONLY=true
             shift
             ;;
         --coverage)
@@ -330,6 +791,18 @@ while [[ $# -gt 0 ]]; do
             AUTO_COMMIT=true
             shift
             ;;
+        --no-commit)
+            AUTO_COMMIT=false
+            shift
+            ;;
+        --output)
+            BACKUP_OUTPUT="$2"
+            shift 2
+            ;;
+        --name)
+            PROJECT_NAME="$2"
+            shift 2
+            ;;
         --help)
             print_usage
             exit 0
@@ -344,9 +817,47 @@ done
 
 # Main execution
 main() {
+    case "$COMMAND" in
+        build)
+            build_command
+            ;;
+        test)
+            test_command
+            ;;
+        setup)
+            setup_command
+            ;;
+        backup)
+            backup_command
+            ;;
+        backup-raw)
+            backup_raw_command
+            ;;
+        clean)
+            clean_command
+            ;;
+        install-hooks)
+            install_hooks_command
+            ;;
+        format)
+            format_command
+            ;;
+        lint)
+            lint_command
+            ;;
+        *)
+            log_error "Unknown command: $COMMAND"
+            print_usage
+            exit 1
+            ;;
+    esac
+}
+
+build_command() {
     trap cleanup_on_exit EXIT
     
     print_banner
+    log_info "Running build command..."
     
     # Validate environment
     check_dependencies
@@ -356,12 +867,9 @@ main() {
         clean_build
     fi
     
-    # Skip build if test-only mode
-    if [ "$TEST_ONLY" = false ]; then
-        setup_directories
-        configure_project
-        build_project
-    fi
+    setup_directories
+    configure_project
+    build_project
     
     # Run tests unless skipped
     if [ "$SKIP_TESTS" = false ]; then
@@ -401,5 +909,76 @@ main() {
     echo "=================================================================="
 }
 
-# Run main function
-main "$@"
+test_command() {
+    print_banner
+    log_info "Running test command..."
+    
+    check_dependencies
+    
+    if [ ! -d "$BUILD_DIR" ]; then
+        log_info "Build directory not found, building first..."
+        setup_directories
+        configure_project
+        build_project
+    fi
+    
+    if ! run_tests; then
+        log_error "Tests failed"
+        exit 1
+    fi
+    
+    log_success "All tests passed!"
+}
+
+setup_command() {
+    print_banner
+    log_info "Running setup command..."
+    
+    setup_development_environment
+}
+
+backup_command() {
+    print_banner
+    log_info "Running backup command..."
+    
+    create_backup
+}
+
+backup_raw_command() {
+    print_banner
+    log_info "Running raw backup command..."
+    
+    create_raw_backup
+}
+
+clean_command() {
+    print_banner
+    log_info "Running clean command..."
+    
+    clean_build
+    log_success "Clean completed!"
+}
+
+install_hooks_command() {
+    print_banner
+    log_info "Running install hooks command..."
+    
+    install_git_hooks
+}
+
+format_command() {
+    print_banner
+    log_info "Running format command..."
+    
+    format_code
+}
+
+lint_command() {
+    print_banner
+    log_info "Running lint command..."
+    
+    lint_code
+}
+
+# Execute main function
+main

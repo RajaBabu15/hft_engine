@@ -1,0 +1,3831 @@
+{
+  "metadata": {
+    "projectName": "hft_engine",
+    "backupDate": "2025-07-10 09:39:37",
+    "projectRoot": "/mnt/c/Users/rajab/CLionProjects/hft_engine",
+    "fileCount": 30,
+    "backupVersion": "1.0",
+    "generatedBy": "HFT Engine Raw Content Backup Script (Bash/WSL)"
+  },
+  "files": [
+    {
+      "directory": "",
+      "fileName": "CMakeLists.txt",
+      "extension": ".txt",
+      "type": "cmake",
+      "relativePath": "CMakeLists.txt",
+      "size": 1735,
+      "lastModified": "2025-07-10 08:27:30",
+      "content": "cmake_minimum_required(VERSION 3.16)
+project(HFTEngine CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS \"${CMAKE_CXX_FLAGS} -pthread\")
+
+# Enable coverage reporting
+option(ENABLE_COVERAGE \"Enable code coverage reporting\" OFF)
+if(ENABLE_COVERAGE)
+    set(CMAKE_CXX_FLAGS \"${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs -ftest-coverage\")
+    set(CMAKE_EXE_LINKER_FLAGS \"${CMAKE_EXE_LINKER_FLAGS} --coverage\")
+endif()
+
+# --- External Dependencies ---
+find_package(Boost 1.74 REQUIRED COMPONENTS system thread)
+find_package(OpenSSL REQUIRED)
+find_package(nlohmann_json 3.2.0 REQUIRED)
+
+# --- Vendored WebSocket++ (compatible v0.8.2) ---
+add_library(websocketpp INTERFACE)
+# CORRECTED: Point to the directory CONTAINING the websocketpp folder
+target_include_directories(websocketpp INTERFACE
+        ${CMAKE_SOURCE_DIR}/external/websocketpp
+)
+
+# --- Core Engine Library ---
+add_library(hft_core
+        src/matching_engine.cpp
+        src/order_book.cpp
+        src/websocket_client.cpp
+        src/auth_manager.cpp
+        src/trading_client.cpp
+        src/ui_manager.cpp
+)
+
+# Public headers for hft_core
+target_include_directories(hft_core PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+# Link in Boost, OpenSSL, JSON, and our vendored wspp
+target_link_libraries(hft_core
+        PUBLIC
+        Boost::system
+        Boost::thread
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        nlohmann_json::nlohmann_json
+        websocketpp
+)
+
+# --- Main Executable ---
+add_executable(hft_engine
+        src/main.cpp
+)
+target_link_libraries(hft_engine
+        PRIVATE
+        hft_core
+)
+
+# --- Testing Setup ---
+enable_testing()
+add_subdirectory(tests)"
+    },
+    {
+      "directory": "",
+      "fileName": "config.json",
+      "extension": ".json",
+      "type": "configuration",
+      "relativePath": "config.json",
+      "size": 48,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "{\r
+  \"symbol\": \"btcusdt\",\r
+  \"book_depth\": 10\r
+}"
+    },
+    {
+      "directory": "",
+      "fileName": "Dockerfile",
+      "extension": "",
+      "type": "special",
+      "relativePath": "Dockerfile",
+      "size": 758,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "# Stage 1: Builder\r
+FROM ubuntu:22.04 AS builder\r
+RUN apt-get update && apt-get install -y \\\r
+    build-essential \\\r
+    cmake \\\r
+    git \\\r
+    libssl-dev \\\r
+    libboost-system-dev \\\r
+    libboost-thread-dev \\\r
+    nlohmann-json3-dev\r
+\r
+# Clone and build websocketpp\r
+RUN git clone https://github.com/zaphoyd/websocketpp.git /websocketpp\r
+\r
+WORKDIR /app\r
+COPY . .\r
+RUN mkdir build && cd build && \\\r
+    cmake -DCMAKE_PREFIX_PATH=/websocketpp .. && \\\r
+    make -j$(nproc)\r
+\r
+# Stage 2: Runner\r
+FROM ubuntu:22.04\r
+RUN apt-get update && apt-get install -y libssl3 libboost-system1.74.0 libboost-thread1.74.0 && rm -rf /var/lib/apt/lists/*\r
+WORKDIR /app\r
+COPY --from=builder /app/build/hft_engine .\r
+COPY --from=builder /app/config.json .\r
+CMD [\"./hft_engine\"]"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "auth_manager.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/auth_manager.h",
+      "size": 1658,
+      "lastModified": "2025-07-10 08:13:22",
+      "content": "#pragma once\r
+#include <string>\r
+#include <optional>\r
+#include <memory>\r
+\r
+namespace hft {\r
+    class AuthManager {\r
+    public:\r
+        struct Credentials {\r
+            std::string api_key;\r
+            std::string secret_key;\r
+            std::string passphrase; // For some exchanges\r
+        };\r
+\r
+        AuthManager();\r
+        ~AuthManager();\r
+\r
+        // Load credentials from environment variables or config file\r
+        bool load_credentials();\r
+        bool load_credentials_from_file(const std::string& config_path);\r
+        bool set_credentials(const std::string& api_key, const std::string& secret_key);\r
+        \r
+        // Validate credentials format\r
+        bool validate_credentials() const;\r
+        \r
+        // Get credentials (returns nullopt if not loaded)\r
+        std::optional<Credentials> get_credentials() const;\r
+        \r
+        // Generate HMAC signature for API requests\r
+        std::string generate_signature(const std::string& query_string, const std::string& secret) const;\r
+        \r
+        // Generate timestamp for API requests\r
+        std::string get_timestamp() const;\r
+        \r
+        // Clear credentials from memory\r
+        void clear_credentials();\r
+        \r
+        // Test connection with current credentials\r
+        bool test_connection() const;\r
+\r
+    private:\r
+        bool credentials_loaded_;\r
+        std::unique_ptr<Credentials> credentials_;\r
+        \r
+        // Helper methods\r
+        bool is_valid_api_key(const std::string& key) const;\r
+        bool is_valid_secret(const std::string& secret) const;\r
+        std::string read_from_env(const std::string& var_name) const;\r
+    };\r
+}\r"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "command.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/command.h",
+      "size": 466,
+      "lastModified": "2025-07-10 08:32:00",
+      "content": "#pragma once\r
+#include \"types.h\"\r
+#include <cstdint>\r
+#include <string>\r
+#include <vector>\r
+\r
+namespace hft {\r
+    enum class CommandType { MARKET_DATA };\r
+\r
+    struct Level {\r
+        Price price;\r
+        Quantity quantity;\r
+    };\r
+\r
+    // Padded to a cache line to prevent false sharing\r
+    struct alignas(64) Command {\r
+        CommandType type;\r
+        uint64_t timestamp_ns;\r
+        std::vector<Level> bids;\r
+        std::vector<Level> asks;\r
+    };\r
+}\r"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "common.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/common.h",
+      "size": 478,
+      "lastModified": "2025-07-10 08:17:25",
+      "content": "#pragma once\r
+#include <cstdint>\r
+#include <string>\r
+\r
+namespace hft {\r
+    // Legacy types for backward compatibility\r
+    using LegacyPrice = int64_t;\r
+    using LegacyQuantity = uint64_t;\r
+    using OrderID = uint64_t;\r
+\r
+    // Convert floating point price to a fixed-point integer\r
+    inline LegacyPrice price_to_int(double p) { return static_cast<LegacyPrice>(p * 100.0); }\r
+    inline double price_to_double(LegacyPrice p) { return static_cast<double>(p) / 100.0; }\r
+}\r"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "matching_engine.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/matching_engine.h",
+      "size": 626,
+      "lastModified": "2025-07-09 15:57:21",
+      "content": "#pragma once\r
+#include <atomic>\r
+#include <thread>\r
+#include <boost/lockfree/queue.hpp>\r
+#include \"command.h\"\r
+#include \"order_book.h\"\r
+\r
+namespace hft {\r
+    class MatchingEngine {\r
+    public:\r
+        MatchingEngine(int book_depth);\r
+        ~MatchingEngine();\r
+\r
+        bool post_command(Command&& cmd);\r
+        void run();\r
+        void stop();\r
+\r
+    private:\r
+        void writer_thread_func();\r
+\r
+        boost::lockfree::queue<Command*> command_queue_{1024 * 64};\r
+        OrderBook order_book_;\r
+        int book_depth_;\r
+\r
+        std::atomic<bool> running_{false};\r
+        std::thread writer_thread_;\r
+    };\r
+}"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "order_book.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/order_book.h",
+      "size": 381,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "#pragma once\r
+#include \"command.h\"\r
+#include <map>\r
+#include <vector>\r
+#include <string>\r
+#include <iostream>\r
+\r
+namespace hft {\r
+    class OrderBook {\r
+    public:\r
+        void update(const Command& cmd);\r
+        void print_book(int depth) const;\r
+\r
+    private:\r
+        std::map<Price, Quantity, std::greater<Price>> bids_;\r
+        std::map<Price, Quantity> asks_;\r
+    };\r
+}"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "trading_client.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/trading_client.h",
+      "size": 3377,
+      "lastModified": "2025-07-10 08:13:47",
+      "content": "#pragma once\r
+#include \"types.h\"\r
+#include \"auth_manager.h\"\r
+#include <vector>\r
+#include <unordered_map>\r
+#include <functional>\r
+#include <future>\r
+#include <memory>\r
+\r
+namespace hft {\r
+    class TradingClient {\r
+    public:\r
+        using OrderCallback = std::function<void(const Order&)>;\r
+        using TradeCallback = std::function<void(const Trade&)>;\r
+        using ErrorCallback = std::function<void(const std::string&)>;\r
+\r
+        explicit TradingClient(std::shared_ptr<AuthManager> auth_manager);\r
+        ~TradingClient();\r
+\r
+        // Connection management\r
+        bool connect();\r
+        void disconnect();\r
+        bool is_connected() const;\r
+\r
+        // Order management\r
+        std::future<OrderId> place_order(const Symbol& symbol, Side side, OrderType type, \r
+                                       Price price, Quantity quantity, TimeInForce tif = TimeInForce::GTC);\r
+        std::future<bool> cancel_order(const OrderId& order_id);\r
+        std::future<bool> cancel_all_orders(const Symbol& symbol = \"\");\r
+        \r
+        // Account information\r
+        std::future<std::vector<Order>> get_open_orders(const Symbol& symbol = \"\");\r
+        std::future<std::vector<Trade>> get_trade_history(const Symbol& symbol = \"\", int limit = 100);\r
+        std::future<double> get_account_balance(const std::string& asset = \"USDT\");\r
+        \r
+        // Order status queries\r
+        std::future<Order> get_order_status(const OrderId& order_id);\r
+        \r
+        // Callbacks for real-time updates\r
+        void set_order_callback(OrderCallback callback);\r
+        void set_trade_callback(TradeCallback callback);\r
+        void set_error_callback(ErrorCallback callback);\r
+        \r
+        // Risk management\r
+        void set_max_position_size(const Symbol& symbol, Quantity max_size);\r
+        void set_max_order_value(double max_value);\r
+        bool validate_order(const Symbol& symbol, Side side, Price price, Quantity quantity) const;\r
+        \r
+        // Market data requests\r
+        std::future<double> get_current_price(const Symbol& symbol);\r
+        std::future<std::pair<Price, Price>> get_bid_ask_spread(const Symbol& symbol);\r
+\r
+    private:\r
+        std::shared_ptr<AuthManager> auth_manager_;\r
+        bool connected_;\r
+        \r
+        // Risk management settings\r
+        std::unordered_map<Symbol, Quantity> max_position_sizes_;\r
+        double max_order_value_;\r
+        \r
+        // Callbacks\r
+        OrderCallback order_callback_;\r
+        TradeCallback trade_callback_;\r
+        ErrorCallback error_callback_;\r
+        \r
+        // Internal order tracking\r
+        std::unordered_map<OrderId, Order> active_orders_;\r
+        \r
+        // HTTP client for REST API calls\r
+        std::string make_authenticated_request(const std::string& endpoint, const std::string& method, \r
+                                              const std::string& params = \"\");\r
+        \r
+        // Helper methods\r
+        OrderId generate_order_id();\r
+        std::string get_current_timestamp();\r
+        bool check_connection();\r
+        void handle_error(const std::string& error_message);\r
+        \r
+        // Order validation\r
+        bool validate_price(Price price) const;\r
+        bool validate_quantity(Quantity quantity) const;\r
+        bool check_risk_limits(const Symbol& symbol, Side side, Price price, Quantity quantity) const;\r
+    };\r
+}\r"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "types.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/types.h",
+      "size": 1208,
+      "lastModified": "2025-07-10 08:13:07",
+      "content": "#pragma once\r
+#include <string>\r
+#include <cstdint>\r
+\r
+namespace hft {\r
+    using Price = double;\r
+    using Quantity = double;\r
+    using OrderId = std::string;\r
+    using Symbol = std::string;\r
+    using Timestamp = uint64_t;\r
+\r
+    enum class Side {\r
+        BUY,\r
+        SELL\r
+    };\r
+\r
+    enum class OrderType {\r
+        MARKET,\r
+        LIMIT,\r
+        STOP_LIMIT\r
+    };\r
+\r
+    enum class OrderStatus {\r
+        NEW,\r
+        PARTIALLY_FILLED,\r
+        FILLED,\r
+        CANCELED,\r
+        REJECTED,\r
+        EXPIRED\r
+    };\r
+\r
+    enum class TimeInForce {\r
+        GTC,  // Good Till Canceled\r
+        IOC,  // Immediate or Cancel\r
+        FOK   // Fill or Kill\r
+    };\r
+\r
+    struct Order {\r
+        OrderId id;\r
+        Symbol symbol;\r
+        Side side;\r
+        OrderType type;\r
+        Price price;\r
+        Quantity quantity;\r
+        Quantity filled_quantity = 0.0;\r
+        OrderStatus status = OrderStatus::NEW;\r
+        TimeInForce time_in_force = TimeInForce::GTC;\r
+        Timestamp timestamp;\r
+    };\r
+\r
+    struct Trade {\r
+        OrderId order_id;\r
+        Symbol symbol;\r
+        Side side;\r
+        Price price;\r
+        Quantity quantity;\r
+        Timestamp timestamp;\r
+    };\r
+}\r"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "ui_manager.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/ui_manager.h",
+      "size": 3689,
+      "lastModified": "2025-07-10 08:14:12",
+      "content": "#pragma once\r
+#include \"types.h\"\r
+#include \"order_book.h\"\r
+#include <vector>\r
+#include <string>\r
+#include <memory>\r
+#include <functional>\r
+\r
+namespace hft {\r
+    enum class UIMode {\r
+        LOGIN,\r
+        MAIN_MENU,\r
+        ORDER_BOOK_VIEW,\r
+        ORDER_MANAGEMENT,\r
+        ACCOUNT_INFO,\r
+        SETTINGS\r
+    };\r
+\r
+    class UIManager {\r
+    public:\r
+        using LoginCallback = std::function<bool(const std::string&, const std::string&)>;\r
+        using OrderCallback = std::function<void(const Symbol&, Side, OrderType, Price, Quantity)>;\r
+        using CancelCallback = std::function<void(const OrderId&)>;\r
+\r
+        UIManager();\r
+        ~UIManager();\r
+\r
+        // UI lifecycle\r
+        bool initialize();\r
+        void cleanup();\r
+        void run();\r
+        void stop();\r
+\r
+        // Mode management\r
+        void set_mode(UIMode mode);\r
+        UIMode get_current_mode() const;\r
+\r
+        // Display methods\r
+        void display_login_screen();\r
+        void display_main_menu();\r
+        void display_order_book(const OrderBook& order_book, int depth = 10);\r
+        void display_order_management(const std::vector<Order>& orders);\r
+        void display_account_info(double balance, const std::vector<Trade>& recent_trades);\r
+        void display_error(const std::string& message);\r
+        void display_status(const std::string& message);\r
+\r
+        // Input handling\r
+        std::pair<std::string, std::string> get_login_credentials();\r
+        int get_menu_choice(const std::vector<std::string>& options);\r
+        Order get_order_input(const Symbol& symbol);\r
+        std::string get_cancel_order_id();\r
+\r
+        // Callbacks\r
+        void set_login_callback(LoginCallback callback);\r
+        void set_order_callback(OrderCallback callback);\r
+        void set_cancel_callback(CancelCallback callback);\r
+\r
+        // UI updates\r
+        void update_connection_status(bool connected);\r
+        void update_order_book(const OrderBook& order_book);\r
+        void update_orders(const std::vector<Order>& orders);\r
+        void update_balance(double balance);\r
+\r
+        // Utility methods\r
+        void clear_screen();\r
+        void print_header(const std::string& title);\r
+        void print_separator();\r
+        void wait_for_key();\r
+\r
+    private:\r
+        UIMode current_mode_;\r
+        bool running_;\r
+        bool initialized_;\r
+\r
+        // Callbacks\r
+        LoginCallback login_callback_;\r
+        OrderCallback order_callback_;\r
+        CancelCallback cancel_callback_;\r
+\r
+        // Display state\r
+        bool connection_status_;\r
+        std::string last_error_;\r
+        std::string last_status_;\r
+\r
+        // Input/output helpers\r
+        std::string get_input(const std::string& prompt);\r
+        double get_numeric_input(const std::string& prompt);\r
+        char get_char_input();\r
+        void print_colored(const std::string& text, const std::string& color);\r
+        \r
+        // Screen drawing\r
+        void draw_border();\r
+        void draw_order_book_table(const OrderBook& order_book, int depth);\r
+        void draw_order_table(const std::vector<Order>& orders);\r
+        void draw_menu(const std::vector<std::string>& options);\r
+        \r
+        // Validation\r
+        bool validate_price_input(const std::string& input);\r
+        bool validate_quantity_input(const std::string& input);\r
+        \r
+        // Color codes for terminal output\r
+        static const std::string RESET;\r
+        static const std::string RED;\r
+        static const std::string GREEN;\r
+        static const std::string YELLOW;\r
+        static const std::string BLUE;\r
+        static const std::string CYAN;\r
+        static const std::string WHITE;\r
+    };\r
+}\r"
+    },
+    {
+      "directory": "include/hft",
+      "fileName": "websocket_client.h",
+      "extension": ".h",
+      "type": "header",
+      "relativePath": "include/hft/websocket_client.h",
+      "size": 677,
+      "lastModified": "2025-07-09 16:38:12",
+      "content": "#pragma once\r
+#include \"matching_engine.h\"\r
+#include <websocketpp/client.hpp>\r
+#include <websocketpp/config/asio_client.hpp>\r
+#include <string>\r
+#include <memory>\r
+\r
+namespace hft {\r
+\r
+    // Use the standard, default client config\r
+    using client = websocketpp::client<websocketpp::config::asio_tls_client>;\r
+\r
+    class WebsocketClient {\r
+    public:\r
+        WebsocketClient(MatchingEngine& engine, std::string symbol);\r
+        void run();\r
+\r
+    private:\r
+        void on_message(websocketpp::connection_hdl hdl, client::message_ptr msg);\r
+\r
+        MatchingEngine& engine_;\r
+        client ws_client_;\r
+        std::string uri_;\r
+        std::string symbol_;\r
+    };\r
+}"
+    },
+    {
+      "directory": "",
+      "fileName": "README.md",
+      "extension": ".md",
+      "type": "documentation",
+      "relativePath": "README.md",
+      "size": 7719,
+      "lastModified": "2025-07-10 08:06:17",
+      "content": "# High-Frequency Trading (HFT) Engine\r
+\r
+A professional-grade **High-Frequency Trading Engine** built in C++ that connects to Binance cryptocurrency exchange via WebSocket to receive real-time market data and maintain a live order book for algorithmic trading strategies.\r
+\r
+## 🎯 Project Overview\r
+\r
+This HFT engine demonstrates institutional-grade trading infrastructure with microsecond-level optimizations. It serves as a foundation for:\r
+\r
+- **Cryptocurrency Trading Bots**\r
+- **Market Making Algorithms** \r
+- **Statistical Arbitrage Strategies**\r
+- **Real-time Market Analysis**\r
+- **Backtesting Infrastructure**\r
+\r
+## 🚀 What This Project Achieves\r
+\r
+1. **Real-time Market Data Processing**: Connects to Binance's WebSocket API for live order book updates\r
+2. **High-Performance Order Book Management**: Maintains accurate, real-time market depth data\r
+3. **Ultra-Low Latency Architecture**: Built for algorithmic trading with microsecond optimizations\r
+4. **Market Analysis Foundation**: Provides real-time market conditions for trading decisions\r
+\r
+**⚠️ Important Note**: This is a **READ-ONLY** market data system. It does **NOT** execute actual trades or place orders. It only displays real-time market data for analysis and strategy development.\r
+\r
+## 🏗️ Architecture & Components\r
+\r
+### Core Components\r
+\r
+| Component | File | Purpose |\r
+|-----------|------|----------|\r
+| **WebSocket Client** | `websocket_client.h/cpp` | Real-time connection to Binance API |\r
+| **Matching Engine** | `matching_engine.h/cpp` | High-performance message processor |\r
+| **Order Book** | `order_book.h/cpp` | Market depth data management |\r
+| **Command System** | `command.h` | Internal communication structures |\r
+| **Configuration** | `config.json` | Trading pair and display settings |\r
+\r
+### Technical Features\r
+\r
+- **Lock-free Programming**: Eliminates thread contention for ultra-low latency\r
+- **Cache Optimization**: 64-byte aligned structures prevent false sharing\r
+- **Asynchronous Processing**: Separates I/O from computation\r
+- **Multi-threading**: Dedicated threads for data reception and processing\r
+- **Memory Efficient**: Optimized STL containers for trading data\r
+\r
+## 📊 Real-time Output Example\r
+\r
+```\r
+Connecting to Binance for symbol: \"btcusdt\"\r
+Press Ctrl+C to exit.\r
+[2025-07-10 07:54:52] [connect] Successful connection\r
+\r
+--- ORDER BOOK ---\r
+------------------------------------\r
+|       BIDS       |       ASKS       |\r
+| Price    | Qty     | Price    | Qty     |\r
+------------------------------------\r
+| 111224.58 |       5 | 111224.59 |       2 |\r
+| 111224.57 |       0 | 111224.60 |       0 |\r
+| 111223.89 |       0 | 111225.00 |       0 |\r
+| 111223.88 |       0 | 111226.00 |       0 |\r
+------------------------------------\r
+```\r
+\r
+## 🔄 Data Flow Process\r
+\r
+1. **WebSocket Connection**: Connects to `wss://stream.binance.com:9443/ws/btcusdt@depth20@100ms`\r
+2. **Data Reception**: Receives order book updates every 100ms\r
+3. **JSON Parsing**: Converts market data to internal command format\r
+4. **Lock-free Queue**: Passes data through ultra-fast message queue\r
+5. **Order Book Update**: Updates bid/ask levels in real-time\r
+6. **Display**: Renders formatted order book to terminal\r
+\r
+## ⚡ Performance Optimizations\r
+\r
+- **Lock-free Queue**: Boost's lock-free queue for 64K commands\r
+- **Cache Line Alignment**: Prevents CPU cache false sharing\r
+- **Single Writer Pattern**: Eliminates lock contention\r
+- **Memory Pool**: Reduces allocation overhead\r
+- **Branch Prediction**: Optimized conditional logic\r
+\r
+## 📈 Trading vs. Display-Only Functionality\r
+\r
+### Current State: **DISPLAY-ONLY** 📊\r
+\r
+This project is currently a **market data viewer** and does **NOT** execute any actual trading operations. Here's what it does:\r
+\r
+**✅ What it DOES:**\r
+- Connects to Binance WebSocket API\r
+- Receives real-time market data\r
+- Displays live order book updates\r
+- Maintains accurate bid/ask spreads\r
+- Provides foundation for trading algorithms\r
+\r
+**❌ What it does NOT do:**\r
+- Place buy/sell orders\r
+- Execute trades\r
+- Manage positions or portfolio\r
+- Handle authentication for trading\r
+- Risk management or position sizing\r
+\r
+### 🚀 Future Trading Extension\r
+\r
+To convert this into an actual trading system, you would need to add:\r
+\r
+1. **Binance Trading API Integration**\r
+   ```cpp\r
+   // Example: Order placement functionality\r
+   class TradingClient {\r
+       void place_order(Side side, Price price, Quantity qty);\r
+       void cancel_order(OrderId id);\r
+   };\r
+   ```\r
+\r
+2. **Authentication & API Keys**\r
+   - Binance API key and secret\r
+   - HMAC signature generation\r
+   - Rate limiting compliance\r
+\r
+3. **Trading Strategy Logic**\r
+   ```cpp\r
+   class MarketMakingStrategy {\r
+       void on_order_book_update(const OrderBook& book);\r
+       void place_quotes(Price bid, Price ask);\r
+   };\r
+   ```\r
+\r
+4. **Risk Management**\r
+   - Position limits\r
+   - Stop-loss mechanisms\r
+   - Exposure monitoring\r
+\r
+### ⚠️ Trading Risks Warning\r
+\r
+**IMPORTANT**: Adding actual trading functionality involves significant financial risk:\r
+- Cryptocurrency markets are highly volatile\r
+- Algorithmic trading can lead to rapid losses\r
+- Always test strategies in simulation first\r
+- Never risk more than you can afford to lose\r
+- Consider regulatory compliance in your jurisdiction\r
+\r
+## Prerequisites\r
+\r
+- Docker\r
+- A C++20 compatible compiler (GCC 11+ or Clang 14+)\r
+- CMake (3.16+)\r
+- Boost libraries (`system`, `thread`)\r
+- OpenSSL\r
+- `nlohmann/json` library\r
+\r
+On **Ubuntu 22.04**, you can install C++ dependencies with:\r
+```bash\r
+sudo apt update && sudo apt install -y \\\r
+    build-essential cmake git libssl-dev \\\r
+    libboost-all-dev nlohmann-json3-dev pkg-config\r
+```\r
+\r
+## 🛠️ How to Build and Run\r
+\r
+### Method 1: Ubuntu/WSL (Recommended)\r
+\r
+1. **Install Dependencies:**\r
+   ```bash\r
+   sudo apt update && sudo apt install -y build-essential cmake libboost-all-dev libssl-dev nlohmann-json3-dev pkg-config git\r
+   ```\r
+\r
+2. **Clone Repository & Dependencies:**\r
+   ```bash\r
+   git clone <your-repo-url>\r
+   cd hft_engine\r
+   mkdir -p external && cd external\r
+   git clone https://github.com/zaphoyd/websocketpp.git\r
+   cd ..\r
+   ```\r
+\r
+3. **Build Project:**\r
+   ```bash\r
+   mkdir build && cd build\r
+   cmake ..\r
+   make -j4\r
+   ```\r
+\r
+4. **Configure Trading Pair:**\r
+   ```bash\r
+   cp ../config.json .\r
+   # Edit config.json to change symbol (default: \"btcusdt\")\r
+   ```\r
+\r
+5. **Run the Engine:**\r
+   ```bash\r
+   ./hft_engine\r
+   ```\r
+\r
+### Method 2: Windows with WSL\r
+\r
+1. **Enable WSL and install Ubuntu:**\r
+   ```powershell\r
+   wsl --install -d Ubuntu-24.04\r
+   ```\r
+\r
+2. **Open WSL terminal and follow Method 1 steps above**\r
+\r
+3. **Navigate to Windows project folder:**\r
+   ```bash\r
+   cd /mnt/c/Users/[username]/CLionProjects/hft_engine\r
+   ```\r
+\r
+### Method 3: Native Windows (Advanced)\r
+\r
+1. **Install dependencies via vcpkg or manually**\r
+2. **Use Visual Studio with CMake support**\r
+3. **Configure paths for Boost, OpenSSL, nlohmann_json**\r
+\r
+### Expected Output\r
+\r
+Successful run shows:\r
+```\r
+Connecting to Binance for symbol: \"btcusdt\"\r
+Press Ctrl+C to exit.\r
+[2025-07-10 07:54:52] [connect] Successful connection\r
+[2025-07-10 07:54:52] [connect] WebSocket Connection 57.182.125.171:9443\r
+\r
+--- ORDER BOOK ---\r
+------------------------------------\r
+|       BIDS       |       ASKS       |\r
+| Price    | Qty     | Price    | Qty     |\r
+------------------------------------\r
+| 111224.58 |       5 | 111224.59 |       2 |\r
+...\r
+```\r
+\r
+## How to Build and Run (with Docker)\r
+\r
+1.  **Build the Docker Image:**\r
+    ```bash\r
+    docker build -t hft-engine .\r
+    ```\r
+\r
+2.  **Run the Container:**\r
+    ```bash\r
+    docker run -it --rm hft-engine\r
+    ```"
+    },
+    {
+      "directory": "scripts",
+      "fileName": "backup.ps1",
+      "extension": ".ps1",
+      "type": "script",
+      "relativePath": "scripts/backup.ps1",
+      "size": 6634,
+      "lastModified": "2025-07-10 09:27:00",
+      "content": "# HFT Engine Backup Script\r
+# Creates a JSON-formatted backup file (.bkpf) containing all relevant project files\r
+\r
+param(\r
+    [string]$OutputPath = \"hft-build-backup\",\r
+    [string]$ProjectName = \"hft_engine\"\r
+)\r
+\r
+# Get the project root directory\r
+$ProjectRoot = Split-Path -Parent $PSScriptRoot\r
+$BackupDir = Join-Path $ProjectRoot $OutputPath\r
+$BackupFileName = \"${ProjectName}_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').bkpf\"\r
+$BackupPath = Join-Path $BackupDir $BackupFileName\r
+\r
+Write-Host \"Creating backup for project: $ProjectName\" -ForegroundColor Green\r
+Write-Host \"Project root: $ProjectRoot\" -ForegroundColor Yellow\r
+Write-Host \"Backup directory: $BackupDir\" -ForegroundColor Yellow\r
+Write-Host \"Backup file: $BackupFileName\" -ForegroundColor Yellow\r
+\r
+# Create backup directory if it doesn't exist\r
+if (-not (Test-Path $BackupDir)) {\r
+    New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null\r
+    Write-Host \"Created backup directory: $BackupDir\" -ForegroundColor Green\r
+}\r
+\r
+# Define file extensions to include\r
+$IncludeExtensions = @(\r
+    '.cpp', '.c', '.cc', '.cxx',     # C++ source files\r
+    '.h', '.hpp', '.hxx',            # Header files\r
+    '.py', '.pyx', '.pyi',           # Python files\r
+    '.cmake', '.txt',                # CMake files\r
+    '.md', '.rst',                   # Documentation\r
+    '.json', '.yaml', '.yml',        # Configuration files\r
+    '.sh', '.bat', '.ps1',           # Scripts\r
+    '.gitignore', '.gitattributes'   # Git files\r
+)\r
+\r
+# Define special files to always include\r
+$SpecialFiles = @(\r
+    'CMakeLists.txt',\r
+    'README.md',\r
+    'Dockerfile',\r
+    'Makefile',\r
+    '.gitignore'\r
+)\r
+\r
+# Define directories to exclude\r
+$ExcludeDirectories = @(\r
+    'build', 'Build', 'BUILD',\r
+    'cmake-build-debug', 'cmake-build-release',\r
+    '.git', '.svn', '.hg',\r
+    '.idea', '.vscode', '.vs',\r
+    'external', 'third_party', 'deps',\r
+    'node_modules', '__pycache__',\r
+    '.pytest_cache', '.coverage',\r
+    'dist', 'target', 'out',\r
+    'hft-build-backup'\r
+)\r
+\r
+# Function to determine file type based on extension\r
+function Get-FileType {\r
+    param($Extension)\r
+    switch ($Extension) {\r
+        { $_ -in @('.cpp', '.c', '.cc', '.cxx') } { return 'source' }\r
+        { $_ -in @('.h', '.hpp', '.hxx') } { return 'header' }\r
+        { $_ -in @('.py', '.pyx', '.pyi') } { return 'python' }\r
+        { $_ -in @('.cmake', '.txt') } { return 'cmake' }\r
+        { $_ -in @('.md', '.rst') } { return 'documentation' }\r
+        { $_ -in @('.json', '.yaml', '.yml') } { return 'configuration' }\r
+        { $_ -in @('.sh', '.bat', '.ps1') } { return 'script' }\r
+        { $_ -in @('.gitignore', '.gitattributes') } { return 'git' }\r
+        { $_ -eq '' } { return 'special' }\r
+        default { return 'other' }\r
+    }\r
+}\r
+\r
+# Function to check if directory should be excluded\r
+function Should-ExcludeDirectory {\r
+    param($DirectoryPath)\r
+    foreach ($ExcludeDir in $ExcludeDirectories) {\r
+        if ($DirectoryPath -like \"*$ExcludeDir*\") {\r
+            return $true\r
+        }\r
+    }\r
+    return $false\r
+}\r
+\r
+# Function to escape JSON strings\r
+function Escape-JsonString {\r
+    param($InputString)\r
+    if ($null -eq $InputString) { return \"\" }\r
+    $InputString = $InputString -replace '\\\\', '\\\\\\\\'\r
+    $InputString = $InputString -replace '\"', '\\\"'\r
+    $InputString = $InputString -replace \"`n\", '\\n'\r
+    $InputString = $InputString -replace \"`r\", '\\r'\r
+    $InputString = $InputString -replace \"`t\", '\\t'\r
+    return $InputString\r
+}\r
+\r
+# Collect all relevant files\r
+$Files = @()\r
+$FileCount = 0\r
+\r
+Write-Host \"Scanning for files...\" -ForegroundColor Green\r
+\r
+Get-ChildItem -Path $ProjectRoot -Recurse -File | ForEach-Object {\r
+    $File = $_\r
+    $RelativePath = $File.FullName.Substring($ProjectRoot.Length + 1)\r
+    \r
+    # Check if file is in an excluded directory\r
+    if (Should-ExcludeDirectory $RelativePath) {\r
+        return\r
+    }\r
+    \r
+    # Check if file extension is included or if it's a special file\r
+    $Extension = $File.Extension.ToLower()\r
+    $IsIncluded = $IncludeExtensions -contains $Extension -or $SpecialFiles -contains $File.Name\r
+    \r
+    if ($IsIncluded) {\r
+        try {\r
+            $Content = Get-Content -Path $File.FullName -Raw -ErrorAction Stop\r
+            $EscapedContent = Escape-JsonString $Content\r
+            \r
+            $Directory = Split-Path -Path $RelativePath -Parent\r
+            if ([string]::IsNullOrEmpty($Directory)) {\r
+                $Directory = \"\"\r
+            }\r
+            \r
+            $FileInfo = @{\r
+                directory = $Directory\r
+                fileName = $File.Name\r
+                extension = $Extension\r
+                type = Get-FileType $Extension\r
+                relativePath = $RelativePath\r
+                size = $File.Length\r
+                lastModified = $File.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')\r
+                content = $EscapedContent\r
+            }\r
+            $Files += $FileInfo\r
+            $FileCount++\r
+            Write-Host \"  Added: $RelativePath\" -ForegroundColor Green\r
+        }\r
+        catch {\r
+            Write-Host \"  Skipped: $RelativePath (binary or inaccessible)\" -ForegroundColor Yellow\r
+        }\r
+    }\r
+}\r
+\r
+# Create backup object\r
+$BackupData = @{\r
+    metadata = @{\r
+        projectName = $ProjectName\r
+        backupDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'\r
+        projectRoot = $ProjectRoot\r
+        fileCount = $FileCount\r
+        backupVersion = \"1.0\"\r
+        generatedBy = \"HFT Engine Backup Script (PowerShell)\"\r
+    }\r
+    files = $Files\r
+}\r
+\r
+# Convert to JSON and save\r
+Write-Host \"Creating backup file...\" -ForegroundColor Green\r
+try {\r
+    $JsonData = $BackupData | ConvertTo-Json -Depth 10 -Compress:$false\r
+    $JsonData | Out-File -FilePath $BackupPath -Encoding UTF8\r
+    \r
+    $BackupSize = (Get-Item $BackupPath).Length\r
+    Write-Host \"Backup created successfully!\" -ForegroundColor Green\r
+    Write-Host \"File: $BackupPath\" -ForegroundColor Yellow\r
+    Write-Host \"Size: $([math]::Round($BackupSize / 1MB, 2)) MB\" -ForegroundColor Yellow\r
+    Write-Host \"Files included: $FileCount\" -ForegroundColor Yellow\r
+}\r
+catch {\r
+    Write-Host \"Error creating backup: $($_.Exception.Message)\" -ForegroundColor Red\r
+    exit 1\r
+}\r
+\r
+# Display summary by file type\r
+Write-Host \"`nFile type summary:\" -ForegroundColor Green\r
+$Files | Group-Object -Property type | Sort-Object Name | ForEach-Object {\r
+    Write-Host \"  $($_.Name): $($_.Count) files\" -ForegroundColor Cyan\r
+}\r
+\r
+Write-Host \"`nBackup completed successfully!\" -ForegroundColor Green\r
+Write-Host \"Backup saved to: $BackupDir\" -ForegroundColor Yellow\r"
+    },
+    {
+      "directory": "scripts",
+      "fileName": "backup.sh",
+      "extension": ".sh",
+      "type": "script",
+      "relativePath": "scripts/backup.sh",
+      "size": 6842,
+      "lastModified": "2025-07-10 09:24:04",
+      "content": "#!/bin/bash\r
+\r
+# HFT Engine Backup Script\r
+# Creates a JSON-formatted backup file (.bkpf) containing all relevant project files\r
+# Saves backups in hft-build-backup folder\r
+\r
+PROJECT_NAME=\"hft_engine\"\r
+SCRIPT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\r
+PROJECT_ROOT=\"$(dirname \"$SCRIPT_DIR\")\"\r
+BACKUP_DIR=\"$PROJECT_ROOT/hft-build-backup\"\r
+BACKUP_FILENAME=\"${PROJECT_NAME}_backup_$(date +%Y%m%d_%H%M%S).bkpf\"\r
+BACKUP_PATH=\"$BACKUP_DIR/$BACKUP_FILENAME\"\r
+\r
+echo \"Creating backup for project: $PROJECT_NAME\"\r
+echo \"Project root: $PROJECT_ROOT\"\r
+echo \"Backup directory: $BACKUP_DIR\"\r
+echo \"Backup file: $BACKUP_FILENAME\"\r
+\r
+# Create backup directory if it doesn't exist\r
+mkdir -p \"$BACKUP_DIR\"\r
+\r
+# Define file extensions and patterns to include\r
+INCLUDE_PATTERNS=(\r
+    \"*.cpp\" \"*.c\" \"*.cc\" \"*.cxx\"     # C++ source files\r
+    \"*.h\" \"*.hpp\" \"*.hxx\"            # Header files\r
+    \"*.py\" \"*.pyx\" \"*.pyi\"           # Python files\r
+    \"*.cmake\" \"*.txt\"                # CMake files\r
+    \"*.md\" \"*.rst\"                   # Documentation\r
+    \"*.json\" \"*.yaml\" \"*.yml\"        # Configuration files\r
+    \"*.sh\" \"*.bat\" \"*.ps1\"           # Scripts\r
+    \"*.gitignore\" \"*.gitattributes\"  # Git files\r
+    \"CMakeLists.txt\"                 # CMake main file\r
+    \"README.md\"                      # README\r
+    \"Dockerfile\"                     # Docker file\r
+    \"Makefile\"                       # Make file\r
+    \"*.toml\" \"*.ini\" \"*.cfg\"         # Config files\r
+)\r
+\r
+# Define directories to exclude\r
+EXCLUDE_DIRECTORIES=(\r
+    \"build\" \"Build\" \"BUILD\"\r
+    \"cmake-build-debug\" \"cmake-build-release\"\r
+    \".git\" \".svn\" \".hg\"\r
+    \".idea\" \".vscode\" \".vs\"\r
+    \"external\" \"third_party\" \"deps\"\r
+    \"node_modules\" \"__pycache__\"\r
+    \".pytest_cache\" \".coverage\"\r
+    \"dist\" \"target\" \"out\"\r
+    \"hft-build-backup\"\r
+)\r
+\r
+# Function to determine file type based on extension\r
+get_file_type() {\r
+    local ext=\"$1\"\r
+    case \"$ext\" in\r
+        \".cpp\"|\".c\"|\".cc\"|\".cxx\") echo \"source\" ;;\r
+        \".h\"|\".hpp\"|\".hxx\") echo \"header\" ;;\r
+        \".py\"|\".pyx\"|\".pyi\") echo \"python\" ;;\r
+        \".cmake\"|\".txt\") echo \"cmake\" ;;\r
+        \".md\"|\".rst\") echo \"documentation\" ;;\r
+        \".json\"|\".yaml\"|\".yml\"|\".toml\"|\".ini\"|\".cfg\") echo \"configuration\" ;;\r
+        \".sh\"|\".bat\"|\".ps1\") echo \"script\" ;;\r
+        \".gitignore\"|\".gitattributes\") echo \"git\" ;;\r
+        \"\") echo \"special\" ;;  # For files without extension\r
+        *) echo \"other\" ;;\r
+    esac\r
+}\r
+\r
+# Function to check if directory should be excluded\r
+should_exclude_directory() {\r
+    local path=\"$1\"\r
+    for exclude_dir in \"${EXCLUDE_DIRECTORIES[@]}\"; do\r
+        if [[ \"$path\" == *\"/$exclude_dir/\"* ]] || [[ \"$path\" == \"$exclude_dir/\"* ]] || [[ \"$path\" == *\"/$exclude_dir\" ]]; then\r
+            return 0\r
+        fi\r
+    done\r
+    return 1\r
+}\r
+\r
+# Function to escape JSON strings\r
+escape_json() {\r
+    local str=\"$1\"\r
+    # Replace backslashes first, then quotes, then newlines/tabs/carriage returns\r
+    str=\"${str//\\\\/\\\\\\\\}\"\r
+    str=\"${str//\\\"/\\\\\\\"}\"\r
+    str=\"${str//$'\\n'/\\\\n}\"\r
+    str=\"${str//$'\\r'/\\\\r}\"\r
+    str=\"${str//$'\\t'/\\\\t}\"\r
+    echo \"$str\"\r
+}\r
+\r
+echo \"Scanning for files...\"\r
+\r
+# Start building the JSON backup file\r
+{\r
+    echo \"{\"\r
+    echo \"  \\\"metadata\\\": {\"\r
+    echo \"    \\\"projectName\\\": \\\"$PROJECT_NAME\\\",\"\r
+    echo \"    \\\"backupDate\\\": \\\"$(date '+%Y-%m-%d %H:%M:%S')\\\",\"\r
+    echo \"    \\\"projectRoot\\\": \\\"$PROJECT_ROOT\\\",\"\r
+    echo \"    \\\"backupVersion\\\": \\\"1.0\\\",\"\r
+    echo \"    \\\"generatedBy\\\": \\\"HFT Engine Backup Script (Bash)\\\",\"\r
+    echo \"    \\\"fileCount\\\": 0\"\r
+    echo \"  },\"\r
+    echo \"  \\\"files\\\": [\"\r
+    \r
+    first_file=true\r
+    file_count=0\r
+    \r
+    # Find all files matching our patterns\r
+    for pattern in \"${INCLUDE_PATTERNS[@]}\"; do\r
+        find \"$PROJECT_ROOT\" -name \"$pattern\" -type f 2>/dev/null | while read -r file; do\r
+            # Skip if file doesn't exist or is not readable\r
+            if [[ ! -r \"$file\" ]]; then\r
+                continue\r
+            fi\r
+            \r
+            relative_path=\"${file#$PROJECT_ROOT/}\"\r
+            \r
+            # Skip if in excluded directory\r
+            if should_exclude_directory \"$relative_path\"; then\r
+                continue\r
+            fi\r
+            \r
+            filename=$(basename \"$file\")\r
+            extension=\"${filename##*.}\"\r
+            if [[ \"$filename\" == \"$extension\" ]]; then\r
+                extension=\"\"\r
+            else\r
+                extension=\".$extension\"\r
+            fi\r
+            \r
+            # Get file metadata\r
+            directory=$(dirname \"$relative_path\")\r
+            if [[ \"$directory\" == \".\" ]]; then\r
+                directory=\"\"\r
+            fi\r
+            \r
+            file_size=$(stat -c%s \"$file\" 2>/dev/null || echo \"0\")\r
+            last_modified=$(stat -c%y \"$file\" 2>/dev/null | cut -d. -f1 || echo \"\")\r
+            file_type=$(get_file_type \"$extension\")\r
+            \r
+            # Read and escape file content\r
+            content=$(cat \"$file\" 2>/dev/null || echo \"\")\r
+            escaped_content=$(escape_json \"$content\")\r
+            \r
+            # Add comma if not first file\r
+            if [[ \"$first_file\" != true ]]; then\r
+                echo \",\"\r
+            fi\r
+            first_file=false\r
+            \r
+            # Add file entry to JSON\r
+            echo \"    {\"\r
+            echo \"      \\\"directory\\\": \\\"$directory\\\",\"\r
+            echo \"      \\\"fileName\\\": \\\"$filename\\\",\"\r
+            echo \"      \\\"extension\\\": \\\"$extension\\\",\"\r
+            echo \"      \\\"type\\\": \\\"$file_type\\\",\"\r
+            echo \"      \\\"relativePath\\\": \\\"$relative_path\\\",\"\r
+            echo \"      \\\"size\\\": $file_size,\"\r
+            echo \"      \\\"lastModified\\\": \\\"$last_modified\\\",\"\r
+            echo \"      \\\"content\\\": \\\"$escaped_content\\\"\"\r
+            echo -n \"    }\"\r
+            \r
+            ((file_count++))\r
+            echo \"  Added: $relative_path\" >&2\r
+        done\r
+    done\r
+    \r
+    echo \"\"\r
+    echo \"  ]\"\r
+    echo \"}\"\r
+} > \"$BACKUP_PATH\"\r
+\r
+# Update file count in metadata\r
+temp_file=$(mktemp)\r
+file_count=$(grep -c \"relativePath\" \"$BACKUP_PATH\" 2>/dev/null || echo \"0\")\r
+sed \"s/\\\"fileCount\\\": 0/\\\"fileCount\\\": $file_count/\" \"$BACKUP_PATH\" > \"$temp_file\"\r
+mv \"$temp_file\" \"$BACKUP_PATH\"\r
+\r
+echo \"Backup created successfully!\"\r
+echo \"File: $BACKUP_PATH\"\r
+backup_size=$(stat -c%s \"$BACKUP_PATH\" 2>/dev/null || echo \"0\")\r
+backup_size_mb=$(echo \"scale=2; $backup_size / 1024 / 1024\" | bc -l 2>/dev/null || echo \"0\")\r
+echo \"Size: ${backup_size_mb} MB\"\r
+echo \"Files included: $file_count\"\r
+\r
+# Display file type summary\r
+echo \"\"\r
+echo \"File type summary:\"\r
+grep -o '\"type\": \"[^\"]*\"' \"$BACKUP_PATH\" | sort | uniq -c | sort -nr | while read count type; do\r
+    type_name=$(echo \"$type\" | cut -d'\"' -f4)\r
+    echo \"  $type_name: $count files\"\r
+done\r
+\r
+echo \"\"\r
+echo \"Backup saved to: $BACKUP_DIR\"\r
+ls -lh \"$BACKUP_PATH\"\r"
+    },
+    {
+      "directory": "scripts",
+      "fileName": "backup_raw.sh",
+      "extension": ".sh",
+      "type": "script",
+      "relativePath": "scripts/backup_raw.sh",
+      "size": 8814,
+      "lastModified": "2025-07-10 09:39:35",
+      "content": "#!/bin/bash
+
+# HFT Engine Backup Script (Raw Content) - WSL Version
+# Creates a JSON-formatted backup file (.bkpf) containing all relevant project files with raw content
+
+# Default parameters
+OUTPUT_PATH=\"hft-build-backup\"
+PROJECT_NAME=\"hft_engine\"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -o|--output)
+            OUTPUT_PATH=\"$2\"
+            shift 2
+            ;;
+        -n|--name)
+            PROJECT_NAME=\"$2\"
+            shift 2
+            ;;
+        -h|--help)
+            echo \"Usage: $0 [-o|--output OUTPUT_PATH] [-n|--name PROJECT_NAME]\"
+            echo \"  -o, --output    Output directory path (default: hft-build-backup)\"
+            echo \"  -n, --name      Project name (default: hft_engine)\"
+            exit 0
+            ;;
+        *)
+            echo \"Unknown option: $1\"
+            exit 1
+            ;;
+    esac
+done
+
+# Get the project root directory (parent of scripts directory)
+SCRIPT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"
+PROJECT_ROOT=\"$(dirname \"$SCRIPT_DIR\")\"
+BACKUP_DIR=\"$PROJECT_ROOT/$OUTPUT_PATH\"
+BACKUP_FILENAME=\"${PROJECT_NAME}_backup_raw_$(date +%Y%m%d_%H%M%S).bkpf\"
+BACKUP_PATH=\"$BACKUP_DIR/$BACKUP_FILENAME\"
+
+echo -e \"\\033[32mCreating raw content backup for project: $PROJECT_NAME\\033[0m\"
+echo -e \"\\033[33mProject root: $PROJECT_ROOT\\033[0m\"
+echo -e \"\\033[33mBackup directory: $BACKUP_DIR\\033[0m\"
+echo -e \"\\033[33mBackup file: $BACKUP_FILENAME\\033[0m\"
+
+# Create backup directory if it doesn't exist
+if [ ! -d \"$BACKUP_DIR\" ]; then
+    mkdir -p \"$BACKUP_DIR\"
+    echo -e \"\\033[32mCreated backup directory: $BACKUP_DIR\\033[0m\"
+fi
+
+# Define file extensions to include
+INCLUDE_EXTENSIONS=(
+    \".cpp\" \".c\" \".cc\" \".cxx\"        # C++ source files
+    \".h\" \".hpp\" \".hxx\"              # Header files
+    \".py\" \".pyx\" \".pyi\"             # Python files
+    \".cmake\" \".txt\"                 # CMake files
+    \".md\" \".rst\"                    # Documentation
+    \".json\" \".yaml\" \".yml\"          # Configuration files
+    \".sh\" \".bat\" \".ps1\"             # Scripts
+    \".gitignore\" \".gitattributes\"   # Git files
+)
+
+# Define special files to always include
+SPECIAL_FILES=(
+    \"CMakeLists.txt\"
+    \"README.md\"
+    \"Dockerfile\"
+    \"Makefile\"
+    \".gitignore\"
+)
+
+# Define directories to exclude
+EXCLUDE_DIRECTORIES=(
+    \"build\" \"Build\" \"BUILD\"
+    \"cmake-build-debug\" \"cmake-build-release\"
+    \".git\" \".svn\" \".hg\"
+    \".idea\" \".vscode\" \".vs\"
+    \"external\" \"third_party\" \"deps\"
+    \"node_modules\" \"__pycache__\"
+    \".pytest_cache\" \".coverage\"
+    \"dist\" \"target\" \"out\"
+    \"hft-build-backup\"
+)
+
+# Function to determine file type based on extension
+get_file_type() {
+    local extension=\"$1\"
+    case \"$extension\" in
+        \".cpp\"|\".c\"|\".cc\"|\".cxx\") echo \"source\" ;;
+        \".h\"|\".hpp\"|\".hxx\") echo \"header\" ;;
+        \".py\"|\".pyx\"|\".pyi\") echo \"python\" ;;
+        \".cmake\"|\".txt\") echo \"cmake\" ;;
+        \".md\"|\".rst\") echo \"documentation\" ;;
+        \".json\"|\".yaml\"|\".yml\") echo \"configuration\" ;;
+        \".sh\"|\".bat\"|\".ps1\") echo \"script\" ;;
+        \".gitignore\"|\".gitattributes\") echo \"git\" ;;
+        \"\") echo \"special\" ;;
+        *) echo \"other\" ;;
+    esac
+}
+
+# Function to check if directory should be excluded
+should_exclude_directory() {
+    local dir_path=\"$1\"
+    for exclude_dir in \"${EXCLUDE_DIRECTORIES[@]}\"; do
+        if [[ \"$dir_path\" == *\"$exclude_dir\"* ]]; then
+            return 0  # true
+        fi
+    done
+    return 1  # false
+}
+
+# Function to check if extension is included
+is_extension_included() {
+    local extension=\"$1\"
+    for inc_ext in \"${INCLUDE_EXTENSIONS[@]}\"; do
+        if [[ \"$extension\" == \"$inc_ext\" ]]; then
+            return 0  # true
+        fi
+    done
+    return 1  # false
+}
+
+# Function to check if file is special
+is_special_file() {
+    local filename=\"$1\"
+    for special_file in \"${SPECIAL_FILES[@]}\"; do
+        if [[ \"$filename\" == \"$special_file\" ]]; then
+            return 0  # true
+        fi
+    done
+    return 1  # false
+}
+
+# Function to escape JSON strings
+escape_json() {
+    local input=\"$1\"
+    # Escape backslashes, quotes, and control characters
+    printf '%s' \"$input\" | sed 's/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g; s/\\t/\\\\t/g; s/\\r/\\\\r/g; s/\\n/\\\\n/g'
+}
+
+# Function to get file size
+get_file_size() {
+    local file=\"$1\"
+    if [[ \"$OSTYPE\" == \"darwin\"* ]]; then
+        stat -f%z \"$file\"
+    else
+        stat -c%s \"$file\"
+    fi
+}
+
+# Function to get last modified time
+get_last_modified() {
+    local file=\"$1\"
+    if [[ \"$OSTYPE\" == \"darwin\"* ]]; then
+        stat -f \"%Sm\" -t \"%Y-%m-%d %H:%M:%S\" \"$file\"
+    else
+        stat -c \"%y\" \"$file\" | cut -d'.' -f1
+    fi
+}
+
+# Collect all relevant files
+echo -e \"\\033[32mScanning for files...\\033[0m\"
+
+FILE_COUNT=0
+JSON_FILES=\"\"
+
+# Use find to get all files, excluding directories
+while IFS= read -r -d '' file; do
+    # Get relative path
+    relative_path=\"${file#$PROJECT_ROOT/}\"
+    
+    # Skip if in excluded directory
+    if should_exclude_directory \"$relative_path\"; then
+        continue
+    fi
+    
+    # Get file extension and name
+    filename=$(basename \"$file\")
+    extension=\"${filename##*.}\"
+    if [[ \"$filename\" == \"$extension\" ]]; then
+        extension=\"\"  # No extension
+    else
+        extension=\".$extension\"
+    fi
+    
+    # Check if file should be included
+    if is_extension_included \"$extension\" || is_special_file \"$filename\"; then
+        # Try to read file content
+        if content=$(cat \"$file\" 2>/dev/null); then
+            # Get directory path
+            directory=$(dirname \"$relative_path\")
+            if [[ \"$directory\" == \".\" ]]; then
+                directory=\"\"
+            fi
+            
+            # Get file metadata
+            file_size=$(get_file_size \"$file\")
+            last_modified=$(get_last_modified \"$file\")
+            file_type=$(get_file_type \"$extension\")
+            
+            # Escape content for JSON
+            escaped_content=$(escape_json \"$content\")
+            
+            # Add comma if not first file
+            if [[ $FILE_COUNT -gt 0 ]]; then
+                JSON_FILES=\"${JSON_FILES},\"
+            fi
+            
+            # Add file to JSON
+            JSON_FILES=\"${JSON_FILES}
+    {
+      \\\"directory\\\": \\\"$(escape_json \"$directory\")\\\",
+      \\\"fileName\\\": \\\"$(escape_json \"$filename\")\\\",
+      \\\"extension\\\": \\\"$(escape_json \"$extension\")\\\",
+      \\\"type\\\": \\\"$(escape_json \"$file_type\")\\\",
+      \\\"relativePath\\\": \\\"$(escape_json \"$relative_path\")\\\",
+      \\\"size\\\": $file_size,
+      \\\"lastModified\\\": \\\"$(escape_json \"$last_modified\")\\\",
+      \\\"content\\\": \\\"$escaped_content\\\"
+    }\"
+            
+            ((FILE_COUNT++))
+            echo -e \"\\033[32m  Added: $relative_path\\033[0m\"
+        else
+            echo -e \"\\033[33m  Skipped: $relative_path (binary or inaccessible)\\033[0m\"
+        fi
+    fi
+done < <(find \"$PROJECT_ROOT\" -type f -print0)
+
+# Create backup JSON
+echo -e \"\\033[32mCreating raw content backup file...\\033[0m\"
+
+BACKUP_DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Create the complete JSON structure
+JSON_CONTENT=\"{
+  \\\"metadata\\\": {
+    \\\"projectName\\\": \\\"$(escape_json \"$PROJECT_NAME\")\\\",
+    \\\"backupDate\\\": \\\"$(escape_json \"$BACKUP_DATE\")\\\",
+    \\\"projectRoot\\\": \\\"$(escape_json \"$PROJECT_ROOT\")\\\",
+    \\\"fileCount\\\": $FILE_COUNT,
+    \\\"backupVersion\\\": \\\"1.0\\\",
+    \\\"generatedBy\\\": \\\"HFT Engine Raw Content Backup Script (Bash/WSL)\\\"
+  },
+  \\\"files\\\": [$JSON_FILES
+  ]
+}\"
+
+# Write to file
+if echo \"$JSON_CONTENT\" > \"$BACKUP_PATH\"; then
+    BACKUP_SIZE=$(get_file_size \"$BACKUP_PATH\")
+    BACKUP_SIZE_MB=$((BACKUP_SIZE / 1024 / 1024))
+    
+    echo -e \"\\033[32mRaw content backup created successfully!\\033[0m\"
+    echo -e \"\\033[33mFile: $BACKUP_PATH\\033[0m\"
+    echo -e \"\\033[33mSize: ${BACKUP_SIZE_MB} MB\\033[0m\"
+    echo -e \"\\033[33mFiles included: $FILE_COUNT\\033[0m\"
+else
+    echo -e \"\\033[31mError creating raw content backup\\033[0m\"
+    exit 1
+fi
+
+# Display summary by file type
+echo -e \"\\n\\033[32mFile type summary:\\033[0m\"
+declare -A type_counts
+while IFS= read -r -d '' file; do
+    relative_path=\"${file#$PROJECT_ROOT/}\"
+    if should_exclude_directory \"$relative_path\"; then
+        continue
+    fi
+    
+    filename=$(basename \"$file\")
+    extension=\"${filename##*.}\"
+    if [[ \"$filename\" == \"$extension\" ]]; then
+        extension=\"\"
+    else
+        extension=\".$extension\"
+    fi
+    
+    if is_extension_included \"$extension\" || is_special_file \"$filename\"; then
+        if cat \"$file\" >/dev/null 2>&1; then
+            file_type=$(get_file_type \"$extension\")
+            ((type_counts[\"$file_type\"]++))
+        fi
+    fi
+done < <(find \"$PROJECT_ROOT\" -type f -print0)
+
+for type in \"${!type_counts[@]}\"; do
+    echo -e \"\\033[36m  $type: ${type_counts[$type]} files\\033[0m\"
+done
+
+echo -e \"\\n\\033[32mRaw content backup completed successfully!\\033[0m\"
+echo -e \"\\033[33mBackup saved to: $BACKUP_DIR\\033[0m\""
+    },
+    {
+      "directory": "scripts",
+      "fileName": "run_backup.bat",
+      "extension": ".bat",
+      "type": "script",
+      "relativePath": "scripts/run_backup.bat",
+      "size": 186,
+      "lastModified": "2025-07-10 09:38:55",
+      "content": "@echo off\r
+echo Running HFT Engine backup script in WSL...\r
+wsl bash -c \"cd /mnt/c/Users/rajab/CLionProjects/hft_engine && chmod +x scripts/backup_raw.sh && ./scripts/backup_raw.sh %*\"\r"
+    },
+    {
+      "directory": "scripts",
+      "fileName": "run_backup.ps1",
+      "extension": ".ps1",
+      "type": "script",
+      "relativePath": "scripts/run_backup.ps1",
+      "size": 1130,
+      "lastModified": "2025-07-10 09:39:05",
+      "content": "# Run HFT Engine backup script in WSL\r
+param(\r
+    [string]$OutputPath = \"hft-build-backup\",\r
+    [string]$ProjectName = \"hft_engine\"\r
+)\r
+\r
+Write-Host \"Running HFT Engine backup script in WSL...\" -ForegroundColor Green\r
+\r
+# Convert Windows path to WSL path\r
+$WSLPath = \"/mnt/c/Users/rajab/CLionProjects/hft_engine\"\r
+\r
+# Build the WSL command\r
+$WSLCommand = \"cd $WSLPath && chmod +x scripts/backup_raw.sh && ./scripts/backup_raw.sh\"\r
+\r
+# Add parameters if provided\r
+if ($OutputPath -ne \"hft-build-backup\") {\r
+    $WSLCommand += \" -o '$OutputPath'\"\r
+}\r
+if ($ProjectName -ne \"hft_engine\") {\r
+    $WSLCommand += \" -n '$ProjectName'\"\r
+}\r
+\r
+# Run the command in WSL\r
+try {\r
+    wsl bash -c $WSLCommand\r
+    if ($LASTEXITCODE -eq 0) {\r
+        Write-Host \"Backup completed successfully!\" -ForegroundColor Green\r
+    } else {\r
+        Write-Host \"Backup failed with exit code: $LASTEXITCODE\" -ForegroundColor Red\r
+    }\r
+} catch {\r
+    Write-Host \"Error running WSL command: $($_.Exception.Message)\" -ForegroundColor Red\r
+    Write-Host \"Make sure WSL is installed and Ubuntu/Debian distribution is available\" -ForegroundColor Yellow\r
+}\r"
+    },
+    {
+      "directory": "scripts",
+      "fileName": "setup-dev-env.sh",
+      "extension": ".sh",
+      "type": "script",
+      "relativePath": "scripts/setup-dev-env.sh",
+      "size": 10213,
+      "lastModified": "2025-07-10 08:31:36",
+      "content": "#!/bin/bash\r
+\r
+# HFT Engine Development Environment Setup\r
+# Sets up the development environment and installs dependencies\r
+# Author: Raja Babu\r
+# Date: 2025-07-10\r
+\r
+set -e\r
+\r
+# Colors for output\r
+RED='\\033[0;31m'\r
+GREEN='\\033[0;32m'\r
+YELLOW='\\033[1;33m'\r
+BLUE='\\033[0;34m'\r
+NC='\\033[0m' # No Color\r
+\r
+SCRIPT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\r
+PROJECT_ROOT=\"$(dirname \"$SCRIPT_DIR\")\"\r
+\r
+log_info() {\r
+    echo -e \"${BLUE}[SETUP]${NC} $1\"\r
+}\r
+\r
+log_success() {\r
+    echo -e \"${GREEN}[SETUP]${NC} $1\"\r
+}\r
+\r
+log_warning() {\r
+    echo -e \"${YELLOW}[SETUP]${NC} $1\"\r
+}\r
+\r
+log_error() {\r
+    echo -e \"${RED}[SETUP]${NC} $1\"\r
+}\r
+\r
+print_banner() {\r
+    echo \"==================================================================\"\r
+    echo \"               HFT ENGINE DEVELOPMENT SETUP                      \"\r
+    echo \"==================================================================\"\r
+    echo \"Setting up development environment...\"\r
+    echo \"==================================================================\"\r
+}\r
+\r
+detect_os() {\r
+    if [[ \"$OSTYPE\" == \"linux-gnu\"* ]]; then\r
+        echo \"linux\"\r
+    elif [[ \"$OSTYPE\" == \"darwin\"* ]]; then\r
+        echo \"macos\"\r
+    elif [[ \"$OSTYPE\" == \"msys\" || \"$OSTYPE\" == \"cygwin\" ]]; then\r
+        echo \"windows\"\r
+    else\r
+        echo \"unknown\"\r
+    fi\r
+}\r
+\r
+install_dependencies_ubuntu() {\r
+    log_info \"Installing dependencies for Ubuntu/Debian...\"\r
+    \r
+    sudo apt update\r
+    sudo apt install -y \\\r
+        build-essential \\\r
+        cmake \\\r
+        git \\\r
+        libssl-dev \\\r
+        libboost-all-dev \\\r
+        nlohmann-json3-dev \\\r
+        pkg-config \\\r
+        lcov \\\r
+        gcovr \\\r
+        valgrind \\\r
+        cppcheck \\\r
+        clang-format\r
+    \r
+    log_success \"Ubuntu dependencies installed\"\r
+}\r
+\r
+install_dependencies_macos() {\r
+    log_info \"Installing dependencies for macOS...\"\r
+    \r
+    if ! command -v brew &> /dev/null; then\r
+        log_error \"Homebrew not found. Please install Homebrew first:\"\r
+        log_info \"https://brew.sh/\"\r
+        exit 1\r
+    fi\r
+    \r
+    brew install \\\r
+        cmake \\\r
+        boost \\\r
+        openssl \\\r
+        nlohmann-json \\\r
+        lcov \\\r
+        cppcheck \\\r
+        clang-format\r
+    \r
+    log_success \"macOS dependencies installed\"\r
+}\r
+\r
+setup_git_hooks() {\r
+    log_info \"Setting up Git hooks...\"\r
+    \r
+    # Create .git/hooks directory if it doesn't exist\r
+    mkdir -p \"$PROJECT_ROOT/.git/hooks\"\r
+    \r
+    # Copy pre-commit hook\r
+    if [ -f \"$SCRIPT_DIR/pre-commit\" ]; then\r
+        cp \"$SCRIPT_DIR/pre-commit\" \"$PROJECT_ROOT/.git/hooks/pre-commit\"\r
+        chmod +x \"$PROJECT_ROOT/.git/hooks/pre-commit\"\r
+        log_success \"Pre-commit hook installed\"\r
+    else\r
+        log_warning \"Pre-commit hook script not found\"\r
+    fi\r
+    \r
+    # Make build script executable\r
+    if [ -f \"$SCRIPT_DIR/hft-build\" ]; then\r
+        chmod +x \"$SCRIPT_DIR/hft-build\"\r
+        log_success \"hft-build script made executable\"\r
+    fi\r
+}\r
+\r
+setup_external_dependencies() {\r
+    log_info \"Setting up external dependencies...\"\r
+    \r
+    # Create external directory\r
+    mkdir -p \"$PROJECT_ROOT/external\"\r
+    \r
+    # Clone WebSocket++ if not already present\r
+    if [ ! -d \"$PROJECT_ROOT/external/websocketpp\" ]; then\r
+        log_info \"Cloning WebSocket++ library...\"\r
+        git clone https://github.com/zaphoyd/websocketpp.git \"$PROJECT_ROOT/external/websocketpp\"\r
+        log_success \"WebSocket++ cloned successfully\"\r
+    else\r
+        log_info \"WebSocket++ already exists, updating...\"\r
+        cd \"$PROJECT_ROOT/external/websocketpp\"\r
+        git pull origin develop\r
+        cd \"$PROJECT_ROOT\"\r
+    fi\r
+}\r
+\r
+setup_vscode_config() {\r
+    log_info \"Setting up VS Code configuration...\"\r
+    \r
+    mkdir -p \"$PROJECT_ROOT/.vscode\"\r
+    \r
+    # Create settings.json\r
+    cat > \"$PROJECT_ROOT/.vscode/settings.json\" << 'EOF'\r
+{\r
+    \"C_Cpp.default.configurationProvider\": \"ms-vscode.cmake-tools\",\r
+    \"C_Cpp.default.cppStandard\": \"c++17\",\r
+    \"C_Cpp.default.compilerPath\": \"/usr/bin/g++\",\r
+    \"cmake.buildDirectory\": \"${workspaceFolder}/build\",\r
+    \"cmake.generator\": \"Unix Makefiles\",\r
+    \"files.associations\": {\r
+        \"*.h\": \"cpp\",\r
+        \"*.hpp\": \"cpp\",\r
+        \"*.cpp\": \"cpp\"\r
+    },\r
+    \"editor.formatOnSave\": true,\r
+    \"C_Cpp.clang_format_style\": \"Google\"\r
+}\r
+EOF\r
+    \r
+    # Create launch.json for debugging\r
+    cat > \"$PROJECT_ROOT/.vscode/launch.json\" << 'EOF'\r
+{\r
+    \"version\": \"0.2.0\",\r
+    \"configurations\": [\r
+        {\r
+            \"name\": \"Debug HFT Engine\",\r
+            \"type\": \"cppdbg\",\r
+            \"request\": \"launch\",\r
+            \"program\": \"${workspaceFolder}/build/hft_engine\",\r
+            \"args\": [],\r
+            \"stopAtEntry\": false,\r
+            \"cwd\": \"${workspaceFolder}/build\",\r
+            \"environment\": [],\r
+            \"externalConsole\": false,\r
+            \"MIMode\": \"gdb\",\r
+            \"setupCommands\": [\r
+                {\r
+                    \"description\": \"Enable pretty-printing for gdb\",\r
+                    \"text\": \"-enable-pretty-printing\",\r
+                    \"ignoreFailures\": true\r
+                }\r
+            ],\r
+            \"preLaunchTask\": \"Build HFT Engine\"\r
+        },\r
+        {\r
+            \"name\": \"Debug Tests\",\r
+            \"type\": \"cppdbg\",\r
+            \"request\": \"launch\",\r
+            \"program\": \"${workspaceFolder}/build/hft_tests\",\r
+            \"args\": [],\r
+            \"stopAtEntry\": false,\r
+            \"cwd\": \"${workspaceFolder}/build\",\r
+            \"environment\": [],\r
+            \"externalConsole\": false,\r
+            \"MIMode\": \"gdb\",\r
+            \"setupCommands\": [\r
+                {\r
+                    \"description\": \"Enable pretty-printing for gdb\",\r
+                    \"text\": \"-enable-pretty-printing\",\r
+                    \"ignoreFailures\": true\r
+                }\r
+            ],\r
+            \"preLaunchTask\": \"Build HFT Engine\"\r
+        }\r
+    ]\r
+}\r
+EOF\r
+    \r
+    # Create tasks.json\r
+    cat > \"$PROJECT_ROOT/.vscode/tasks.json\" << 'EOF'\r
+{\r
+    \"version\": \"2.0.0\",\r
+    \"tasks\": [\r
+        {\r
+            \"label\": \"Build HFT Engine\",\r
+            \"type\": \"shell\",\r
+            \"command\": \"${workspaceFolder}/scripts/hft-build\",\r
+            \"group\": {\r
+                \"kind\": \"build\",\r
+                \"isDefault\": true\r
+            },\r
+            \"presentation\": {\r
+                \"echo\": true,\r
+                \"reveal\": \"always\",\r
+                \"focus\": false,\r
+                \"panel\": \"shared\"\r
+            },\r
+            \"problemMatcher\": \"$gcc\"\r
+        },\r
+        {\r
+            \"label\": \"Build with Coverage\",\r
+            \"type\": \"shell\",\r
+            \"command\": \"${workspaceFolder}/scripts/hft-build\",\r
+            \"args\": [\"--coverage\"],\r
+            \"group\": \"build\",\r
+            \"presentation\": {\r
+                \"echo\": true,\r
+                \"reveal\": \"always\",\r
+                \"focus\": false,\r
+                \"panel\": \"shared\"\r
+            }\r
+        },\r
+        {\r
+            \"label\": \"Clean Build\",\r
+            \"type\": \"shell\",\r
+            \"command\": \"${workspaceFolder}/scripts/hft-build\",\r
+            \"args\": [\"--clean\"],\r
+            \"group\": \"build\"\r
+        },\r
+        {\r
+            \"label\": \"Run Tests\",\r
+            \"type\": \"shell\",\r
+            \"command\": \"${workspaceFolder}/scripts/hft-build\",\r
+            \"args\": [\"--test-only\"],\r
+            \"group\": \"test\"\r
+        }\r
+    ]\r
+}\r
+EOF\r
+    \r
+    log_success \"VS Code configuration created\"\r
+}\r
+\r
+create_sample_config() {\r
+    log_info \"Creating sample configuration files...\"\r
+    \r
+    # Create sample auth config (without real credentials)\r
+    cat > \"$PROJECT_ROOT/auth_config.sample.json\" << 'EOF'\r
+{\r
+    \"api_key\": \"your_binance_api_key_here\",\r
+    \"secret_key\": \"your_binance_secret_key_here\",\r
+    \"passphrase\": \"\"\r
+}\r
+EOF\r
+    \r
+    log_success \"Sample configuration files created\"\r
+    log_warning \"Remember to copy auth_config.sample.json to auth_config.json and add real credentials\"\r
+}\r
+\r
+verify_installation() {\r
+    log_info \"Verifying installation...\"\r
+    \r
+    local errors=0\r
+    \r
+    # Check required tools\r
+    local tools=(\"cmake\" \"make\" \"g++\" \"git\")\r
+    for tool in \"${tools[@]}\"; do\r
+        if command -v \"$tool\" &> /dev/null; then\r
+            log_success \"$tool found\"\r
+        else\r
+            log_error \"$tool not found\"\r
+            errors=$((errors + 1))\r
+        fi\r
+    done\r
+    \r
+    # Check libraries\r
+    if pkg-config --exists openssl; then\r
+        log_success \"OpenSSL found\"\r
+    else\r
+        log_error \"OpenSSL not found\"\r
+        errors=$((errors + 1))\r
+    fi\r
+    \r
+    if [ $errors -eq 0 ]; then\r
+        log_success \"All dependencies verified\"\r
+        return 0\r
+    else\r
+        log_error \"$errors dependencies missing\"\r
+        return 1\r
+    fi\r
+}\r
+\r
+main() {\r
+    print_banner\r
+    \r
+    local os=$(detect_os)\r
+    log_info \"Detected OS: $os\"\r
+    \r
+    case $os in\r
+        \"linux\")\r
+            install_dependencies_ubuntu\r
+            ;;\r
+        \"macos\")\r
+            install_dependencies_macos\r
+            ;;\r
+        \"windows\")\r
+            log_warning \"Windows detected. Please use WSL or install dependencies manually\"\r
+            ;;\r
+        *)\r
+            log_error \"Unsupported OS: $os\"\r
+            exit 1\r
+            ;;\r
+    esac\r
+    \r
+    setup_external_dependencies\r
+    setup_git_hooks\r
+    setup_vscode_config\r
+    create_sample_config\r
+    \r
+    if verify_installation; then\r
+        log_success \"Development environment setup completed!\"\r
+        echo \"\"\r
+        echo \"==================================================================\"\r
+        echo \"                          NEXT STEPS                             \"\r
+        echo \"==================================================================\"\r
+        echo \"1. Copy auth_config.sample.json to auth_config.json\"\r
+        echo \"2. Add your Binance API credentials to auth_config.json\"\r
+        echo \"3. Run './scripts/hft-build' to build the project\"\r
+        echo \"4. Run './scripts/hft-build --coverage' to run with coverage\"\r
+        echo \"==================================================================\"\r
+    else\r
+        log_error \"Setup completed with errors. Please fix the issues above.\"\r
+        exit 1\r
+    fi\r
+}\r
+\r
+main \"$@\"\r"
+    },
+    {
+      "directory": "src",
+      "fileName": "auth_manager.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/auth_manager.cpp",
+      "size": 5359,
+      "lastModified": "2025-07-10 08:14:42",
+      "content": "#include \"hft/auth_manager.h\"\r
+#include <openssl/hmac.h>\r
+#include <openssl/sha.h>\r
+#include <fstream>\r
+#include <iostream>\r
+#include <chrono>\r
+#include <iomanip>\r
+#include <sstream>\r
+#include <cstdlib>\r
+#include <nlohmann/json.hpp>\r
+\r
+using json = nlohmann::json;\r
+\r
+namespace hft {\r
+\r
+AuthManager::AuthManager() : credentials_loaded_(false), credentials_(nullptr) {}\r
+\r
+AuthManager::~AuthManager() {\r
+    clear_credentials();\r
+}\r
+\r
+bool AuthManager::load_credentials() {\r
+    // Try environment variables first\r
+    std::string api_key = read_from_env(\"BINANCE_API_KEY\");\r
+    std::string secret_key = read_from_env(\"BINANCE_SECRET_KEY\");\r
+    \r
+    if (!api_key.empty() && !secret_key.empty()) {\r
+        return set_credentials(api_key, secret_key);\r
+    }\r
+    \r
+    // Fallback to config file\r
+    return load_credentials_from_file(\"auth_config.json\");\r
+}\r
+\r
+bool AuthManager::load_credentials_from_file(const std::string& config_path) {\r
+    try {\r
+        std::ifstream file(config_path);\r
+        if (!file.is_open()) {\r
+            std::cerr << \"Warning: Could not open auth config file: \" << config_path << std::endl;\r
+            return false;\r
+        }\r
+        \r
+        json config;\r
+        file >> config;\r
+        \r
+        if (config.contains(\"api_key\") && config.contains(\"secret_key\")) {\r
+            std::string api_key = config[\"api_key\"];\r
+            std::string secret_key = config[\"secret_key\"];\r
+            std::string passphrase = config.value(\"passphrase\", \"\");\r
+            \r
+            credentials_ = std::make_unique<Credentials>();\r
+            credentials_->api_key = api_key;\r
+            credentials_->secret_key = secret_key;\r
+            credentials_->passphrase = passphrase;\r
+            \r
+            credentials_loaded_ = validate_credentials();\r
+            return credentials_loaded_;\r
+        }\r
+    } catch (const std::exception& e) {\r
+        std::cerr << \"Error loading credentials: \" << e.what() << std::endl;\r
+        return false;\r
+    }\r
+    \r
+    return false;\r
+}\r
+\r
+bool AuthManager::set_credentials(const std::string& api_key, const std::string& secret_key) {\r
+    if (!is_valid_api_key(api_key) || !is_valid_secret(secret_key)) {\r
+        return false;\r
+    }\r
+    \r
+    credentials_ = std::make_unique<Credentials>();\r
+    credentials_->api_key = api_key;\r
+    credentials_->secret_key = secret_key;\r
+    credentials_->passphrase = \"\";\r
+    \r
+    credentials_loaded_ = true;\r
+    return true;\r
+}\r
+\r
+bool AuthManager::validate_credentials() const {\r
+    if (!credentials_) {\r
+        return false;\r
+    }\r
+    \r
+    return is_valid_api_key(credentials_->api_key) && \r
+           is_valid_secret(credentials_->secret_key);\r
+}\r
+\r
+std::optional<AuthManager::Credentials> AuthManager::get_credentials() const {\r
+    if (!credentials_loaded_ || !credentials_) {\r
+        return std::nullopt;\r
+    }\r
+    \r
+    return *credentials_;\r
+}\r
+\r
+std::string AuthManager::generate_signature(const std::string& query_string, const std::string& secret) const {\r
+    unsigned char digest[SHA256_DIGEST_LENGTH];\r
+    unsigned int digest_len = SHA256_DIGEST_LENGTH;\r
+    \r
+    HMAC(EVP_sha256(), \r
+         secret.c_str(), secret.length(),\r
+         reinterpret_cast<const unsigned char*>(query_string.c_str()), query_string.length(),\r
+         digest, &digest_len);\r
+    \r
+    std::stringstream ss;\r
+    for (unsigned int i = 0; i < digest_len; ++i) {\r
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(digest[i]);\r
+    }\r
+    \r
+    return ss.str();\r
+}\r
+\r
+std::string AuthManager::get_timestamp() const {\r
+    auto now = std::chrono::system_clock::now();\r
+    auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();\r
+    return std::to_string(timestamp);\r
+}\r
+\r
+void AuthManager::clear_credentials() {\r
+    if (credentials_) {\r
+        // Clear sensitive data\r
+        credentials_->api_key.clear();\r
+        credentials_->secret_key.clear();\r
+        credentials_->passphrase.clear();\r
+        credentials_.reset();\r
+    }\r
+    credentials_loaded_ = false;\r
+}\r
+\r
+bool AuthManager::test_connection() const {\r
+    if (!credentials_loaded_) {\r
+        return false;\r
+    }\r
+    \r
+    // For now, just validate format. In real implementation, \r
+    // this would make a test API call to verify credentials\r
+    return validate_credentials();\r
+}\r
+\r
+bool AuthManager::is_valid_api_key(const std::string& key) const {\r
+    // Binance API keys are typically 64 characters long and alphanumeric\r
+    if (key.length() < 20 || key.length() > 128) {\r
+        return false;\r
+    }\r
+    \r
+    // Check if it contains only valid characters\r
+    for (char c : key) {\r
+        if (!std::isalnum(c)) {\r
+            return false;\r
+        }\r
+    }\r
+    \r
+    return true;\r
+}\r
+\r
+bool AuthManager::is_valid_secret(const std::string& secret) const {\r
+    // Similar validation for secret key\r
+    if (secret.length() < 20 || secret.length() > 128) {\r
+        return false;\r
+    }\r
+    \r
+    for (char c : secret) {\r
+        if (!std::isalnum(c) && c != '+' && c != '/' && c != '=') {\r
+            return false;\r
+        }\r
+    }\r
+    \r
+    return true;\r
+}\r
+\r
+std::string AuthManager::read_from_env(const std::string& var_name) const {\r
+    const char* value = std::getenv(var_name.c_str());\r
+    return value ? std::string(value) : \"\";\r
+}\r
+\r
+} // namespace hft\r"
+    },
+    {
+      "directory": "src",
+      "fileName": "main.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/main.cpp",
+      "size": 750,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "#include \"hft/matching_engine.h\"\r
+#include \"hft/websocket_client.h\"\r
+#include <nlohmann/json.hpp>\r
+#include <fstream>\r
+#include <iostream>\r
+\r
+int main() {\r
+    std::ifstream config_file(\"config.json\");\r
+    if (!config_file.is_open()) {\r
+        std::cerr << \"Error: config.json not found!\" << std::endl;\r
+        return 1;\r
+    }\r
+    auto config = nlohmann::json::parse(config_file);\r
+\r
+    hft::MatchingEngine engine(config[\"book_depth\"]);\r
+    engine.run();\r
+\r
+    hft::WebsocketClient client(engine, config[\"symbol\"]);\r
+\r
+    std::cout << \"Connecting to Binance for symbol: \" << config[\"symbol\"] << std::endl;\r
+    std::cout << \"Press Ctrl+C to exit.\" << std::endl;\r
+\r
+    client.run(); // This will block\r
+\r
+    engine.stop();\r
+    return 0;\r
+}"
+    },
+    {
+      "directory": "src",
+      "fileName": "matching_engine.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/matching_engine.cpp",
+      "size": 1127,
+      "lastModified": "2025-07-09 15:59:22",
+      "content": "    #include \"hft/matching_engine.h\"\r
+#include <chrono>\r
+#include <x86intrin.h>\r
+\r
+namespace hft {\r
+\r
+    MatchingEngine::MatchingEngine(int book_depth) : book_depth_(book_depth) {}\r
+\r
+    MatchingEngine::~MatchingEngine() {\r
+        stop();\r
+    }\r
+\r
+    bool MatchingEngine::post_command(Command&& cmd) {\r
+        Command* heap_cmd = new Command(std::move(cmd));\r
+        return command_queue_.push(heap_cmd);\r
+    }\r
+\r
+    void MatchingEngine::run() {\r
+        running_ = true;\r
+        writer_thread_ = std::thread(&MatchingEngine::writer_thread_func, this);\r
+    }\r
+\r
+    void MatchingEngine::stop() {\r
+        running_ = false;\r
+        if (writer_thread_.joinable()) {\r
+            writer_thread_.join();\r
+        }\r
+    }\r
+\r
+    void MatchingEngine::writer_thread_func() {\r
+        while (running_) {\r
+            Command* cmdPtr = nullptr;\r
+            if (command_queue_.pop(cmdPtr)) {\r
+                    order_book_.update(*cmdPtr);\r
+                    order_book_.print_book(book_depth_);\r
+                    delete cmdPtr;\r
+            } else {\r
+                _mm_pause();\r
+            }\r
+        }\r
+    }\r
+}"
+    },
+    {
+      "directory": "src",
+      "fileName": "order_book.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/order_book.cpp",
+      "size": 1953,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "#include \"hft/order_book.h\"\r
+#include <iomanip>\r
+\r
+namespace hft {\r
+\r
+    void OrderBook::update(const Command& cmd) {\r
+        bids_.clear();\r
+        asks_.clear();\r
+        for (const auto& level : cmd.bids) {\r
+            bids_[level.price] = level.quantity;\r
+        }\r
+        for (const auto& level : cmd.asks) {\r
+            asks_[level.price] = level.quantity;\r
+        }\r
+    }\r
+\r
+    void OrderBook::print_book(int depth) const {\r
+        auto bid_it = bids_.cbegin();\r
+        auto ask_it = asks_.cbegin();\r
+\r
+        std::cout << \"\\033[2J\\033[1;1H\"; // Clear screen\r
+        std::cout << \"--- ORDER BOOK ---\" << std::endl;\r
+        std::cout << \"------------------------------------\" << std::endl;\r
+        std::cout << \"|       BIDS       |       ASKS       |\" << std::endl;\r
+        std::cout << \"| Price    | Qty     | Price    | Qty     |\" << std::endl;\r
+        std::cout << \"------------------------------------\" << std::endl;\r
+\r
+        for (int i = 0; i < depth; ++i) {\r
+            std::cout << \"| \";\r
+            if (bid_it != bids_.end()) {\r
+                std::cout << std::fixed << std::setprecision(2) << std::setw(8) << price_to_double(bid_it->first) << \" | \"\r
+                          << std::setw(7) << bid_it->second << \" |\";\r
+                ++bid_it;\r
+            } else {\r
+                std::cout << std::setw(8) << \" \" << \" | \" << std::setw(7) << \" \" << \" |\";\r
+            }\r
+\r
+            if (ask_it != asks_.end()) {\r
+                std::cout << \" \" << std::fixed << std::setprecision(2) << std::setw(8) << price_to_double(ask_it->first) << \" | \"\r
+                          << std::setw(7) << ask_it->second << \" |\";\r
+                ++ask_it;\r
+            } else {\r
+                std::cout << \" \" << std::setw(8) << \" \" << \" | \" << std::setw(7) << \" \" << \" |\";\r
+            }\r
+            std::cout << std::endl;\r
+        }\r
+        std::cout << \"------------------------------------\" << std::endl;\r
+    }\r
+}"
+    },
+    {
+      "directory": "src",
+      "fileName": "trading_client.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/trading_client.cpp",
+      "size": 10812,
+      "lastModified": "2025-07-10 08:15:35",
+      "content": "#include \"hft/trading_client.h\"\r
+#include <iostream>\r
+#include <chrono>\r
+#include <random>\r
+#include <thread>\r
+#include <nlohmann/json.hpp>\r
+\r
+using json = nlohmann::json;\r
+\r
+namespace hft {\r
+\r
+TradingClient::TradingClient(std::shared_ptr<AuthManager> auth_manager)\r
+    : auth_manager_(auth_manager), connected_(false), max_order_value_(10000.0) {}\r
+\r
+TradingClient::~TradingClient() {\r
+    disconnect();\r
+}\r
+\r
+bool TradingClient::connect() {\r
+    if (!auth_manager_ || !auth_manager_->validate_credentials()) {\r
+        handle_error(\"Invalid or missing credentials\");\r
+        return false;\r
+    }\r
+    \r
+    // In a real implementation, this would establish connection to Binance API\r
+    // For now, we'll simulate a connection\r
+    try {\r
+        // Simulate connection delay\r
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));\r
+        \r
+        // Test credentials\r
+        if (!auth_manager_->test_connection()) {\r
+            handle_error(\"Authentication failed\");\r
+            return false;\r
+        }\r
+        \r
+        connected_ = true;\r
+        return true;\r
+    } catch (const std::exception& e) {\r
+        handle_error(\"Connection failed: \" + std::string(e.what()));\r
+        return false;\r
+    }\r
+}\r
+\r
+void TradingClient::disconnect() {\r
+    connected_ = false;\r
+    active_orders_.clear();\r
+}\r
+\r
+bool TradingClient::is_connected() const {\r
+    return connected_;\r
+}\r
+\r
+std::future<OrderId> TradingClient::place_order(const Symbol& symbol, Side side, OrderType type,\r
+                                               Price price, Quantity quantity, TimeInForce tif) {\r
+    return std::async(std::launch::async, [this, symbol, side, type, price, quantity, tif]() -> OrderId {\r
+        if (!connected_) {\r
+            handle_error(\"Not connected to exchange\");\r
+            return \"\";\r
+        }\r
+        \r
+        if (!validate_order(symbol, side, price, quantity)) {\r
+            handle_error(\"Order validation failed\");\r
+            return \"\";\r
+        }\r
+        \r
+        try {\r
+            // Generate unique order ID\r
+            OrderId order_id = generate_order_id();\r
+            \r
+            // Create order object\r
+            Order order;\r
+            order.id = order_id;\r
+            order.symbol = symbol;\r
+            order.side = side;\r
+            order.type = type;\r
+            order.price = price;\r
+            order.quantity = quantity;\r
+            order.time_in_force = tif;\r
+            order.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(\r
+                std::chrono::system_clock::now().time_since_epoch()).count();\r
+            \r
+            // In real implementation, this would send HTTP request to Binance\r
+            // For now, simulate API call delay\r
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));\r
+            \r
+            // Store order in active orders\r
+            active_orders_[order_id] = order;\r
+            \r
+            // Notify callback if set\r
+            if (order_callback_) {\r
+                order_callback_(order);\r
+            }\r
+            \r
+            return order_id;\r
+        } catch (const std::exception& e) {\r
+            handle_error(\"Failed to place order: \" + std::string(e.what()));\r
+            return \"\";\r
+        }\r
+    });\r
+}\r
+\r
+std::future<bool> TradingClient::cancel_order(const OrderId& order_id) {\r
+    return std::async(std::launch::async, [this, order_id]() -> bool {\r
+        if (!connected_) {\r
+            handle_error(\"Not connected to exchange\");\r
+            return false;\r
+        }\r
+        \r
+        auto it = active_orders_.find(order_id);\r
+        if (it == active_orders_.end()) {\r
+            handle_error(\"Order not found: \" + order_id);\r
+            return false;\r
+        }\r
+        \r
+        try {\r
+            // Simulate API call delay\r
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));\r
+            \r
+            // Update order status\r
+            it->second.status = OrderStatus::CANCELED;\r
+            \r
+            // Notify callback\r
+            if (order_callback_) {\r
+                order_callback_(it->second);\r
+            }\r
+            \r
+            // Remove from active orders\r
+            active_orders_.erase(it);\r
+            \r
+            return true;\r
+        } catch (const std::exception& e) {\r
+            handle_error(\"Failed to cancel order: \" + std::string(e.what()));\r
+            return false;\r
+        }\r
+    });\r
+}\r
+\r
+std::future<bool> TradingClient::cancel_all_orders(const Symbol& symbol) {\r
+    return std::async(std::launch::async, [this, symbol]() -> bool {\r
+        if (!connected_) {\r
+            handle_error(\"Not connected to exchange\");\r
+            return false;\r
+        }\r
+        \r
+        try {\r
+            std::vector<OrderId> orders_to_cancel;\r
+            \r
+            for (const auto& [order_id, order] : active_orders_) {\r
+                if (symbol.empty() || order.symbol == symbol) {\r
+                    orders_to_cancel.push_back(order_id);\r
+                }\r
+            }\r
+            \r
+            // Cancel each order\r
+            for (const auto& order_id : orders_to_cancel) {\r
+                auto future = cancel_order(order_id);\r
+                future.wait(); // Wait for each cancellation\r
+            }\r
+            \r
+            return true;\r
+        } catch (const std::exception& e) {\r
+            handle_error(\"Failed to cancel all orders: \" + std::string(e.what()));\r
+            return false;\r
+        }\r
+    });\r
+}\r
+\r
+std::future<std::vector<Order>> TradingClient::get_open_orders(const Symbol& symbol) {\r
+    return std::async(std::launch::async, [this, symbol]() -> std::vector<Order> {\r
+        std::vector<Order> orders;\r
+        \r
+        for (const auto& [order_id, order] : active_orders_) {\r
+            if (symbol.empty() || order.symbol == symbol) {\r
+                orders.push_back(order);\r
+            }\r
+        }\r
+        \r
+        return orders;\r
+    });\r
+}\r
+\r
+std::future<std::vector<Trade>> TradingClient::get_trade_history(const Symbol& symbol, int limit) {\r
+    return std::async(std::launch::async, [this, symbol, limit]() -> std::vector<Trade> {\r
+        // Mock trade history\r
+        std::vector<Trade> trades;\r
+        \r
+        // In real implementation, this would fetch from API\r
+        // For now, return empty vector\r
+        return trades;\r
+    });\r
+}\r
+\r
+std::future<double> TradingClient::get_account_balance(const std::string& asset) {\r
+    return std::async(std::launch::async, [this, asset]() -> double {\r
+        // Mock balance\r
+        if (asset == \"USDT\") {\r
+            return 10000.0; // Mock USDT balance\r
+        } else if (asset == \"BTC\") {\r
+            return 0.5; // Mock BTC balance\r
+        }\r
+        return 0.0;\r
+    });\r
+}\r
+\r
+std::future<Order> TradingClient::get_order_status(const OrderId& order_id) {\r
+    return std::async(std::launch::async, [this, order_id]() -> Order {\r
+        auto it = active_orders_.find(order_id);\r
+        if (it != active_orders_.end()) {\r
+            return it->second;\r
+        }\r
+        \r
+        // Return empty order if not found\r
+        Order empty_order;\r
+        empty_order.status = OrderStatus::REJECTED;\r
+        return empty_order;\r
+    });\r
+}\r
+\r
+std::future<double> TradingClient::get_current_price(const Symbol& symbol) {\r
+    return std::async(std::launch::async, [this, symbol]() -> double {\r
+        // Mock current price - in real implementation, fetch from API\r
+        if (symbol == \"BTCUSDT\" || symbol == \"btcusdt\") {\r
+            return 45000.0 + (rand() % 1000 - 500); // Random price around 45000\r
+        }\r
+        return 0.0;\r
+    });\r
+}\r
+\r
+std::future<std::pair<Price, Price>> TradingClient::get_bid_ask_spread(const Symbol& symbol) {\r
+    return std::async(std::launch::async, [this, symbol]() -> std::pair<Price, Price> {\r
+        // Mock bid/ask spread\r
+        double mid_price = 45000.0;\r
+        double spread = 0.5;\r
+        return {mid_price - spread, mid_price + spread};\r
+    });\r
+}\r
+\r
+void TradingClient::set_order_callback(OrderCallback callback) {\r
+    order_callback_ = callback;\r
+}\r
+\r
+void TradingClient::set_trade_callback(TradeCallback callback) {\r
+    trade_callback_ = callback;\r
+}\r
+\r
+void TradingClient::set_error_callback(ErrorCallback callback) {\r
+    error_callback_ = callback;\r
+}\r
+\r
+void TradingClient::set_max_position_size(const Symbol& symbol, Quantity max_size) {\r
+    max_position_sizes_[symbol] = max_size;\r
+}\r
+\r
+void TradingClient::set_max_order_value(double max_value) {\r
+    max_order_value_ = max_value;\r
+}\r
+\r
+bool TradingClient::validate_order(const Symbol& symbol, Side side, Price price, Quantity quantity) const {\r
+    if (!validate_price(price) || !validate_quantity(quantity)) {\r
+        return false;\r
+    }\r
+    \r
+    return check_risk_limits(symbol, side, price, quantity);\r
+}\r
+\r
+OrderId TradingClient::generate_order_id() {\r
+    static std::random_device rd;\r
+    static std::mt19937 gen(rd());\r
+    static std::uniform_int_distribution<> dis(100000, 999999);\r
+    \r
+    return \"ORDER_\" + std::to_string(dis(gen));\r
+}\r
+\r
+std::string TradingClient::get_current_timestamp() {\r
+    auto now = std::chrono::system_clock::now();\r
+    auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();\r
+    return std::to_string(timestamp);\r
+}\r
+\r
+bool TradingClient::check_connection() {\r
+    return connected_;\r
+}\r
+\r
+void TradingClient::handle_error(const std::string& error_message) {\r
+    std::cerr << \"TradingClient Error: \" << error_message << std::endl;\r
+    \r
+    if (error_callback_) {\r
+        error_callback_(error_message);\r
+    }\r
+}\r
+\r
+bool TradingClient::validate_price(Price price) const {\r
+    return price > 0.0 && price < 1000000.0; // Reasonable price bounds\r
+}\r
+\r
+bool TradingClient::validate_quantity(Quantity quantity) const {\r
+    return quantity > 0.0 && quantity < 1000.0; // Reasonable quantity bounds\r
+}\r
+\r
+bool TradingClient::check_risk_limits(const Symbol& symbol, Side side, Price price, Quantity quantity) const {\r
+    double order_value = price * quantity;\r
+    \r
+    // Check max order value\r
+    if (order_value > max_order_value_) {\r
+        return false;\r
+    }\r
+    \r
+    // Check position size limits\r
+    auto it = max_position_sizes_.find(symbol);\r
+    if (it != max_position_sizes_.end() && quantity > it->second) {\r
+        return false;\r
+    }\r
+    \r
+    return true;\r
+}\r
+\r
+std::string TradingClient::make_authenticated_request(const std::string& endpoint, \r
+                                                     const std::string& method, \r
+                                                     const std::string& params) {\r
+    // In real implementation, this would make HTTP requests to Binance API\r
+    // For now, return mock response\r
+    return \"{\\\"status\\\":\\\"success\\\"}\";\r
+}\r
+\r
+} // namespace hft\r"
+    },
+    {
+      "directory": "src",
+      "fileName": "ui_manager.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/ui_manager.cpp",
+      "size": 13976,
+      "lastModified": "2025-07-10 08:16:49",
+      "content": "#include \"hft/ui_manager.h\"\r
+#include <iostream>\r
+#include <iomanip>\r
+#include <sstream>\r
+#include <limits>\r
+#include <thread>\r
+#include <chrono>\r
+\r
+#ifdef _WIN32\r
+#include <windows.h>\r
+#include <conio.h>\r
+#else\r
+#include <termios.h>\r
+#include <unistd.h>\r
+#endif\r
+\r
+namespace hft {\r
+\r
+// Color constants\r
+const std::string UIManager::RESET = \"\\033[0m\";\r
+const std::string UIManager::RED = \"\\033[31m\";\r
+const std::string UIManager::GREEN = \"\\033[32m\";\r
+const std::string UIManager::YELLOW = \"\\033[33m\";\r
+const std::string UIManager::BLUE = \"\\033[34m\";\r
+const std::string UIManager::CYAN = \"\\033[36m\";\r
+const std::string UIManager::WHITE = \"\\033[37m\";\r
+\r
+UIManager::UIManager() \r
+    : current_mode_(UIMode::LOGIN), running_(false), initialized_(false), connection_status_(false) {}\r
+\r
+UIManager::~UIManager() {\r
+    cleanup();\r
+}\r
+\r
+bool UIManager::initialize() {\r
+    if (initialized_) {\r
+        return true;\r
+    }\r
+    \r
+    try {\r
+        // Initialize terminal settings\r
+        clear_screen();\r
+        initialized_ = true;\r
+        return true;\r
+    } catch (const std::exception& e) {\r
+        std::cerr << \"Failed to initialize UI: \" << e.what() << std::endl;\r
+        return false;\r
+    }\r
+}\r
+\r
+void UIManager::cleanup() {\r
+    if (initialized_) {\r
+        clear_screen();\r
+        initialized_ = false;\r
+    }\r
+}\r
+\r
+void UIManager::run() {\r
+    if (!initialize()) {\r
+        return;\r
+    }\r
+    \r
+    running_ = true;\r
+    \r
+    while (running_) {\r
+        try {\r
+            switch (current_mode_) {\r
+                case UIMode::LOGIN:\r
+                    display_login_screen();\r
+                    break;\r
+                case UIMode::MAIN_MENU:\r
+                    display_main_menu();\r
+                    break;\r
+                case UIMode::ORDER_BOOK_VIEW:\r
+                    // This would display live order book - for now just show menu\r
+                    display_main_menu();\r
+                    break;\r
+                case UIMode::ORDER_MANAGEMENT:\r
+                    // This would show order management interface\r
+                    display_main_menu();\r
+                    break;\r
+                case UIMode::ACCOUNT_INFO:\r
+                    // This would show account information\r
+                    display_main_menu();\r
+                    break;\r
+                case UIMode::SETTINGS:\r
+                    // This would show settings\r
+                    display_main_menu();\r
+                    break;\r
+            }\r
+            \r
+            // Small delay to prevent excessive CPU usage\r
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));\r
+        } catch (const std::exception& e) {\r
+            display_error(\"UI Error: \" + std::string(e.what()));\r
+            std::this_thread::sleep_for(std::chrono::seconds(2));\r
+        }\r
+    }\r
+}\r
+\r
+void UIManager::stop() {\r
+    running_ = false;\r
+}\r
+\r
+void UIManager::set_mode(UIMode mode) {\r
+    current_mode_ = mode;\r
+    clear_screen();\r
+}\r
+\r
+UIMode UIManager::get_current_mode() const {\r
+    return current_mode_;\r
+}\r
+\r
+void UIManager::display_login_screen() {\r
+    clear_screen();\r
+    print_header(\"HFT ENGINE - LOGIN\");\r
+    \r
+    std::cout << \"\\n\";\r
+    print_colored(\"Welcome to the High-Frequency Trading Engine\", CYAN);\r
+    std::cout << \"\\n\\n\";\r
+    \r
+    std::cout << \"Please enter your API credentials:\\n\\n\";\r
+    \r
+    auto credentials = get_login_credentials();\r
+    \r
+    // Call login callback if set\r
+    if (login_callback_) {\r
+        bool success = login_callback_(credentials.first, credentials.second);\r
+        if (success) {\r
+            display_status(\"Login successful!\");\r
+            std::this_thread::sleep_for(std::chrono::seconds(1));\r
+            set_mode(UIMode::MAIN_MENU);\r
+        } else {\r
+            display_error(\"Login failed! Please check your credentials.\");\r
+            std::this_thread::sleep_for(std::chrono::seconds(2));\r
+        }\r
+    } else {\r
+        // No callback set, assume success for demo\r
+        display_status(\"Demo mode - Login bypassed\");\r
+        std::this_thread::sleep_for(std::chrono::seconds(1));\r
+        set_mode(UIMode::MAIN_MENU);\r
+    }\r
+}\r
+\r
+void UIManager::display_main_menu() {\r
+    clear_screen();\r
+    print_header(\"HFT ENGINE - MAIN MENU\");\r
+    \r
+    // Show connection status\r
+    if (connection_status_) {\r
+        print_colored(\"Status: CONNECTED\", GREEN);\r
+    } else {\r
+        print_colored(\"Status: DISCONNECTED\", RED);\r
+    }\r
+    std::cout << \"\\n\\n\";\r
+    \r
+    std::vector<std::string> options = {\r
+        \"1. View Order Book\",\r
+        \"2. Order Management\",\r
+        \"3. Account Information\",\r
+        \"4. Settings\",\r
+        \"5. Exit\"\r
+    };\r
+    \r
+    draw_menu(options);\r
+    \r
+    int choice = get_menu_choice(options);\r
+    \r
+    switch (choice) {\r
+        case 1:\r
+            set_mode(UIMode::ORDER_BOOK_VIEW);\r
+            break;\r
+        case 2:\r
+            set_mode(UIMode::ORDER_MANAGEMENT);\r
+            break;\r
+        case 3:\r
+            set_mode(UIMode::ACCOUNT_INFO);\r
+            break;\r
+        case 4:\r
+            set_mode(UIMode::SETTINGS);\r
+            break;\r
+        case 5:\r
+            stop();\r
+            break;\r
+        default:\r
+            display_error(\"Invalid choice\");\r
+            std::this_thread::sleep_for(std::chrono::seconds(1));\r
+            break;\r
+    }\r
+}\r
+\r
+void UIManager::display_order_book(const OrderBook& order_book, int depth) {\r
+    clear_screen();\r
+    print_header(\"REAL-TIME ORDER BOOK\");\r
+    \r
+    // This would integrate with the existing order book display\r
+    // For now, show placeholder\r
+    std::cout << \"Order book display would appear here...\\n\";\r
+    std::cout << \"Press any key to return to main menu...\\n\";\r
+    wait_for_key();\r
+    set_mode(UIMode::MAIN_MENU);\r
+}\r
+\r
+void UIManager::display_order_management(const std::vector<Order>& orders) {\r
+    clear_screen();\r
+    print_header(\"ORDER MANAGEMENT\");\r
+    \r
+    if (orders.empty()) {\r
+        std::cout << \"No active orders.\\n\\n\";\r
+    } else {\r
+        draw_order_table(orders);\r
+    }\r
+    \r
+    std::vector<std::string> options = {\r
+        \"1. Place New Order\",\r
+        \"2. Cancel Order\",\r
+        \"3. Cancel All Orders\",\r
+        \"4. Refresh\",\r
+        \"5. Back to Main Menu\"\r
+    };\r
+    \r
+    draw_menu(options);\r
+    \r
+    int choice = get_menu_choice(options);\r
+    \r
+    switch (choice) {\r
+        case 1: {\r
+            Order new_order = get_order_input(\"BTCUSDT\");\r
+            if (order_callback_) {\r
+                order_callback_(new_order.symbol, new_order.side, new_order.type, \r
+                               new_order.price, new_order.quantity);\r
+            }\r
+            break;\r
+        }\r
+        case 2: {\r
+            std::string order_id = get_cancel_order_id();\r
+            if (!order_id.empty() && cancel_callback_) {\r
+                cancel_callback_(order_id);\r
+            }\r
+            break;\r
+        }\r
+        case 3:\r
+            // Cancel all orders logic\r
+            display_status(\"Cancelling all orders...\");\r
+            break;\r
+        case 4:\r
+            // Refresh logic\r
+            break;\r
+        case 5:\r
+            set_mode(UIMode::MAIN_MENU);\r
+            break;\r
+    }\r
+}\r
+\r
+void UIManager::display_account_info(double balance, const std::vector<Trade>& recent_trades) {\r
+    clear_screen();\r
+    print_header(\"ACCOUNT INFORMATION\");\r
+    \r
+    std::cout << std::fixed << std::setprecision(2);\r
+    std::cout << \"Account Balance: $\" << balance << \" USDT\\n\\n\";\r
+    \r
+    if (!recent_trades.empty()) {\r
+        std::cout << \"Recent Trades:\\n\";\r
+        std::cout << std::left << std::setw(15) << \"Order ID\" \r
+                  << std::setw(10) << \"Side\" \r
+                  << std::setw(12) << \"Price\" \r
+                  << std::setw(12) << \"Quantity\" << \"\\n\";\r
+        print_separator();\r
+        \r
+        for (const auto& trade : recent_trades) {\r
+            std::cout << std::left << std::setw(15) << trade.order_id\r
+                      << std::setw(10) << (trade.side == Side::BUY ? \"BUY\" : \"SELL\")\r
+                      << std::setw(12) << trade.price\r
+                      << std::setw(12) << trade.quantity << \"\\n\";\r
+        }\r
+    }\r
+    \r
+    std::cout << \"\\nPress any key to return to main menu...\";\r
+    wait_for_key();\r
+    set_mode(UIMode::MAIN_MENU);\r
+}\r
+\r
+void UIManager::display_error(const std::string& message) {\r
+    print_colored(\"ERROR: \" + message, RED);\r
+    std::cout << \"\\n\";\r
+}\r
+\r
+void UIManager::display_status(const std::string& message) {\r
+    print_colored(\"STATUS: \" + message, GREEN);\r
+    std::cout << \"\\n\";\r
+}\r
+\r
+std::pair<std::string, std::string> UIManager::get_login_credentials() {\r
+    std::string api_key, secret_key;\r
+    \r
+    std::cout << \"API Key: \";\r
+    std::getline(std::cin, api_key);\r
+    \r
+    std::cout << \"Secret Key: \";\r
+    std::getline(std::cin, secret_key);\r
+    \r
+    return {api_key, secret_key};\r
+}\r
+\r
+int UIManager::get_menu_choice(const std::vector<std::string>& options) {\r
+    std::cout << \"\\nEnter your choice: \";\r
+    int choice;\r
+    std::cin >> choice;\r
+    \r
+    // Clear input buffer\r
+    std::cin.clear();\r
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\\n');\r
+    \r
+    return choice;\r
+}\r
+\r
+Order UIManager::get_order_input(const Symbol& symbol) {\r
+    clear_screen();\r
+    print_header(\"PLACE NEW ORDER\");\r
+    \r
+    Order order;\r
+    order.symbol = symbol;\r
+    \r
+    std::cout << \"Symbol: \" << symbol << \"\\n\\n\";\r
+    \r
+    // Get side\r
+    std::cout << \"Side (1=BUY, 2=SELL): \";\r
+    int side_choice;\r
+    std::cin >> side_choice;\r
+    order.side = (side_choice == 1) ? Side::BUY : Side::SELL;\r
+    \r
+    // Get order type\r
+    std::cout << \"Order Type (1=MARKET, 2=LIMIT): \";\r
+    int type_choice;\r
+    std::cin >> type_choice;\r
+    order.type = (type_choice == 1) ? OrderType::MARKET : OrderType::LIMIT;\r
+    \r
+    // Get price (if limit order)\r
+    if (order.type == OrderType::LIMIT) {\r
+        order.price = get_numeric_input(\"Price: \");\r
+    }\r
+    \r
+    // Get quantity\r
+    order.quantity = get_numeric_input(\"Quantity: \");\r
+    \r
+    // Clear input buffer\r
+    std::cin.clear();\r
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\\n');\r
+    \r
+    return order;\r
+}\r
+\r
+std::string UIManager::get_cancel_order_id() {\r
+    std::string order_id = get_input(\"Enter Order ID to cancel: \");\r
+    return order_id;\r
+}\r
+\r
+void UIManager::set_login_callback(LoginCallback callback) {\r
+    login_callback_ = callback;\r
+}\r
+\r
+void UIManager::set_order_callback(OrderCallback callback) {\r
+    order_callback_ = callback;\r
+}\r
+\r
+void UIManager::set_cancel_callback(CancelCallback callback) {\r
+    cancel_callback_ = callback;\r
+}\r
+\r
+void UIManager::update_connection_status(bool connected) {\r
+    connection_status_ = connected;\r
+}\r
+\r
+void UIManager::update_order_book(const OrderBook& order_book) {\r
+    // Implementation would update order book display\r
+}\r
+\r
+void UIManager::update_orders(const std::vector<Order>& orders) {\r
+    // Implementation would update order display\r
+}\r
+\r
+void UIManager::update_balance(double balance) {\r
+    // Implementation would update balance display\r
+}\r
+\r
+void UIManager::clear_screen() {\r
+#ifdef _WIN32\r
+    system(\"cls\");\r
+#else\r
+    system(\"clear\");\r
+#endif\r
+}\r
+\r
+void UIManager::print_header(const std::string& title) {\r
+    print_separator();\r
+    std::cout << \"│ \" << std::left << std::setw(76) << title << \" │\\n\";\r
+    print_separator();\r
+}\r
+\r
+void UIManager::print_separator() {\r
+    std::cout << \"┌\" << std::string(78, '─') << \"┐\\n\";\r
+}\r
+\r
+void UIManager::wait_for_key() {\r
+#ifdef _WIN32\r
+    _getch();\r
+#else\r
+    getchar();\r
+#endif\r
+}\r
+\r
+std::string UIManager::get_input(const std::string& prompt) {\r
+    std::cout << prompt;\r
+    std::string input;\r
+    std::getline(std::cin, input);\r
+    return input;\r
+}\r
+\r
+double UIManager::get_numeric_input(const std::string& prompt) {\r
+    std::cout << prompt;\r
+    double value;\r
+    std::cin >> value;\r
+    return value;\r
+}\r
+\r
+char UIManager::get_char_input() {\r
+#ifdef _WIN32\r
+    return _getch();\r
+#else\r
+    return getchar();\r
+#endif\r
+}\r
+\r
+void UIManager::print_colored(const std::string& text, const std::string& color) {\r
+    std::cout << color << text << RESET;\r
+}\r
+\r
+void UIManager::draw_border() {\r
+    std::cout << \"+\" << std::string(78, '-') << \"+\\n\";\r
+}\r
+\r
+void UIManager::draw_order_book_table(const OrderBook& order_book, int depth) {\r
+    // Implementation would draw order book table\r
+}\r
+\r
+void UIManager::draw_order_table(const std::vector<Order>& orders) {\r
+    std::cout << std::left << std::setw(15) << \"Order ID\" \r
+              << std::setw(10) << \"Symbol\" \r
+              << std::setw(8) << \"Side\" \r
+              << std::setw(10) << \"Type\"\r
+              << std::setw(12) << \"Price\" \r
+              << std::setw(12) << \"Quantity\" \r
+              << std::setw(10) << \"Status\" << \"\\n\";\r
+    print_separator();\r
+    \r
+    for (const auto& order : orders) {\r
+        std::cout << std::left << std::setw(15) << order.id\r
+                  << std::setw(10) << order.symbol\r
+                  << std::setw(8) << (order.side == Side::BUY ? \"BUY\" : \"SELL\")\r
+                  << std::setw(10) << (order.type == OrderType::MARKET ? \"MARKET\" : \"LIMIT\")\r
+                  << std::setw(12) << std::fixed << std::setprecision(2) << order.price\r
+                  << std::setw(12) << order.quantity\r
+                  << std::setw(10) << \"NEW\" << \"\\n\";\r
+    }\r
+}\r
+\r
+void UIManager::draw_menu(const std::vector<std::string>& options) {\r
+    for (const auto& option : options) {\r
+        std::cout << option << \"\\n\";\r
+    }\r
+}\r
+\r
+bool UIManager::validate_price_input(const std::string& input) {\r
+    try {\r
+        double price = std::stod(input);\r
+        return price > 0.0;\r
+    } catch (...) {\r
+        return false;\r
+    }\r
+}\r
+\r
+bool UIManager::validate_quantity_input(const std::string& input) {\r
+    try {\r
+        double quantity = std::stod(input);\r
+        return quantity > 0.0;\r
+    } catch (...) {\r
+        return false;\r
+    }\r
+}\r
+\r
+} // namespace hft\r"
+    },
+    {
+      "directory": "src",
+      "fileName": "websocket_client.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "src/websocket_client.cpp",
+      "size": 2082,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "#include \"hft/websocket_client.h\"\r
+#include <nlohmann/json.hpp>\r
+\r
+namespace hft {\r
+\r
+    WebsocketClient::WebsocketClient(MatchingEngine& engine, std::string symbol)\r
+        : engine_(engine), symbol_(symbol) {\r
+\r
+        uri_ = \"wss://stream.binance.com:9443/ws/\" + symbol_ + \"@depth20@100ms\";\r
+\r
+        ws_client_.init_asio();\r
+        ws_client_.set_tls_init_handler([](websocketpp::connection_hdl){\r
+            return std::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::sslv23);\r
+        });\r
+\r
+        ws_client_.set_message_handler(\r
+            std::bind(&WebsocketClient::on_message, this,\r
+                      std::placeholders::_1, std::placeholders::_2)\r
+        );\r
+    }\r
+\r
+    void WebsocketClient::run() {\r
+        websocketpp::lib::error_code ec;\r
+        client::connection_ptr con = ws_client_.get_connection(uri_, ec);\r
+        if (ec) {\r
+            std::cout << \"Could not create connection: \" << ec.message() << std::endl;\r
+            return;\r
+        }\r
+        ws_client_.connect(con);\r
+        ws_client_.run();\r
+    }\r
+\r
+    void WebsocketClient::on_message(websocketpp::connection_hdl hdl, client::message_ptr msg) {\r
+        auto json = nlohmann::json::parse(msg->get_payload());\r
+\r
+        Command cmd;\r
+        cmd.type = CommandType::MARKET_DATA;\r
+        cmd.timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(\r
+            std::chrono::system_clock::now().time_since_epoch()\r
+        ).count();\r
+\r
+        for (const auto& bid : json[\"bids\"]) {\r
+            cmd.bids.push_back({\r
+                price_to_int(std::stod(bid[0].get<std::string>())),\r
+                (Quantity)std::stod(bid[1].get<std::string>())\r
+            });\r
+        }\r
+\r
+        for (const auto& ask : json[\"asks\"]) {\r
+            cmd.asks.push_back({\r
+                price_to_int(std::stod(ask[0].get<std::string>())),\r
+                (Quantity)std::stod(ask[1].get<std::string>())\r
+            });\r
+        }\r
+\r
+        while (!engine_.post_command(std::move(cmd))) {\r
+            // Spin if the queue is full\r
+        }\r
+    }\r
+}"
+    },
+    {
+      "directory": "tests",
+      "fileName": "CMakeLists.txt",
+      "extension": ".txt",
+      "type": "cmake",
+      "relativePath": "tests/CMakeLists.txt",
+      "size": 320,
+      "lastModified": "2025-07-10 08:27:39",
+      "content": "find_package(GTest REQUIRED)\r
+include(GoogleTest)\r
+\r
+add_executable(hft_tests\r
+    test_order_book.cpp\r
+    test_auth_manager.cpp\r
+    test_trading_client.cpp\r
+)\r
+\r
+target_link_libraries(hft_tests\r
+        PRIVATE\r
+        GTest::gtest\r
+        GTest::gtest_main\r
+        hft_core\r
+)\r
+\r
+gtest_discover_tests(hft_tests)\r"
+    },
+    {
+      "directory": "tests",
+      "fileName": "test_auth_manager.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "tests/test_auth_manager.cpp",
+      "size": 7601,
+      "lastModified": "2025-07-10 08:32:47",
+      "content": "#include <gtest/gtest.h>\r
+#include \"hft/auth_manager.h\"\r
+#include <fstream>\r
+#include <cstdlib>\r
+#include <thread>\r
+#include <chrono>\r
+\r
+class AuthManagerTest : public ::testing::Test {\r
+protected:\r
+    void SetUp() override {\r
+        auth_manager = std::make_unique<hft::AuthManager>();\r
+        \r
+        // Clean environment variables\r
+#ifdef _WIN32\r
+        _putenv(\"BINANCE_API_KEY=\");\r
+        _putenv(\"BINANCE_SECRET_KEY=\");\r
+#else\r
+        unsetenv(\"BINANCE_API_KEY\");\r
+        unsetenv(\"BINANCE_SECRET_KEY\");\r
+#endif\r
+        \r
+        // Create test config file\r
+        test_config_file = \"test_auth_config.json\";\r
+        std::ofstream file(test_config_file);\r
+        file << R\"({\r
+            \"api_key\": \"testApiKey12345678901234567890123456789012345678901234567890\",\r
+            \"secret_key\": \"testSecretKey123456789012345678901234567890123456789012345\"\r
+        })\";\r
+        file.close();\r
+        \r
+        invalid_config_file = \"invalid_auth_config.json\";\r
+        std::ofstream invalid_file(invalid_config_file);\r
+        invalid_file << R\"({\r
+            \"api_key\": \"short\",\r
+            \"secret_key\": \"alsoshort\"\r
+        })\";\r
+        invalid_file.close();\r
+    }\r
+\r
+    void TearDown() override {\r
+        // Clean up test files\r
+        std::remove(test_config_file.c_str());\r
+        std::remove(invalid_config_file.c_str());\r
+    }\r
+\r
+    std::unique_ptr<hft::AuthManager> auth_manager;\r
+    std::string test_config_file;\r
+    std::string invalid_config_file;\r
+};\r
+\r
+TEST_F(AuthManagerTest, InitialState) {\r
+    EXPECT_FALSE(auth_manager->validate_credentials());\r
+    EXPECT_FALSE(auth_manager->get_credentials().has_value());\r
+    EXPECT_FALSE(auth_manager->test_connection());\r
+}\r
+\r
+TEST_F(AuthManagerTest, SetValidCredentials) {\r
+    std::string valid_api_key = \"testApiKey12345678901234567890123456789012345678901234567890\";\r
+    std::string valid_secret = \"testSecretKey123456789012345678901234567890123456789012345\";\r
+    \r
+    EXPECT_TRUE(auth_manager->set_credentials(valid_api_key, valid_secret));\r
+    EXPECT_TRUE(auth_manager->validate_credentials());\r
+    \r
+    auto credentials = auth_manager->get_credentials();\r
+    ASSERT_TRUE(credentials.has_value());\r
+    EXPECT_EQ(credentials->api_key, valid_api_key);\r
+    EXPECT_EQ(credentials->secret_key, valid_secret);\r
+}\r
+\r
+TEST_F(AuthManagerTest, SetInvalidCredentials) {\r
+    // Test short API key\r
+    EXPECT_FALSE(auth_manager->set_credentials(\"short\", \"validSecretKey123456789012345678901234567890123456789012345\"));\r
+    \r
+    // Test short secret key\r
+    EXPECT_FALSE(auth_manager->set_credentials(\"validApiKey12345678901234567890123456789012345678901234567890\", \"short\"));\r
+    \r
+    // Test invalid characters\r
+    EXPECT_FALSE(auth_manager->set_credentials(\"invalid@key#\", \"validSecretKey123456789012345678901234567890123456789012345\"));\r
+}\r
+\r
+TEST_F(AuthManagerTest, LoadFromValidConfigFile) {\r
+    EXPECT_TRUE(auth_manager->load_credentials_from_file(test_config_file));\r
+    EXPECT_TRUE(auth_manager->validate_credentials());\r
+    \r
+    auto credentials = auth_manager->get_credentials();\r
+    ASSERT_TRUE(credentials.has_value());\r
+    EXPECT_EQ(credentials->api_key, \"testApiKey12345678901234567890123456789012345678901234567890\");\r
+    EXPECT_EQ(credentials->secret_key, \"testSecretKey123456789012345678901234567890123456789012345\");\r
+}\r
+\r
+TEST_F(AuthManagerTest, LoadFromInvalidConfigFile) {\r
+    EXPECT_FALSE(auth_manager->load_credentials_from_file(invalid_config_file));\r
+    EXPECT_FALSE(auth_manager->validate_credentials());\r
+}\r
+\r
+TEST_F(AuthManagerTest, LoadFromNonexistentFile) {\r
+    EXPECT_FALSE(auth_manager->load_credentials_from_file(\"nonexistent.json\"));\r
+    EXPECT_FALSE(auth_manager->validate_credentials());\r
+}\r
+\r
+TEST_F(AuthManagerTest, GenerateSignature) {\r
+    std::string query_string = \"symbol=BTCUSDT&side=BUY&type=LIMIT&timeInForce=GTC&quantity=1&price=9000&recvWindow=5000&timestamp=1499827319559\";\r
+    std::string secret = \"NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j\";\r
+    \r
+    std::string signature = auth_manager->generate_signature(query_string, secret);\r
+    EXPECT_FALSE(signature.empty());\r
+    EXPECT_EQ(signature.length(), 64); // SHA256 hex string length\r
+    \r
+    // Test consistency\r
+    std::string signature2 = auth_manager->generate_signature(query_string, secret);\r
+    EXPECT_EQ(signature, signature2);\r
+}\r
+\r
+TEST_F(AuthManagerTest, GetTimestamp) {\r
+    std::string timestamp1 = auth_manager->get_timestamp();\r
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));\r
+    std::string timestamp2 = auth_manager->get_timestamp();\r
+    \r
+    EXPECT_FALSE(timestamp1.empty());\r
+    EXPECT_FALSE(timestamp2.empty());\r
+    EXPECT_NE(timestamp1, timestamp2);\r
+    \r
+    // Verify timestamp is numeric\r
+    EXPECT_NO_THROW(std::stoull(timestamp1));\r
+    EXPECT_NO_THROW(std::stoull(timestamp2));\r
+}\r
+\r
+TEST_F(AuthManagerTest, ClearCredentials) {\r
+    // Set credentials first\r
+    auth_manager->set_credentials(\r
+        \"testApiKey12345678901234567890123456789012345678901234567890\",\r
+        \"testSecretKey123456789012345678901234567890123456789012345\"\r
+    );\r
+    EXPECT_TRUE(auth_manager->validate_credentials());\r
+    \r
+    // Clear credentials\r
+    auth_manager->clear_credentials();\r
+    EXPECT_FALSE(auth_manager->validate_credentials());\r
+    EXPECT_FALSE(auth_manager->get_credentials().has_value());\r
+}\r
+\r
+TEST_F(AuthManagerTest, TestConnection) {\r
+    // Without credentials\r
+    EXPECT_FALSE(auth_manager->test_connection());\r
+    \r
+    // With valid credentials\r
+    auth_manager->set_credentials(\r
+        \"testApiKey12345678901234567890123456789012345678901234567890\",\r
+        \"testSecretKey123456789012345678901234567890123456789012345\"\r
+    );\r
+    EXPECT_TRUE(auth_manager->test_connection());\r
+}\r
+\r
+TEST_F(AuthManagerTest, LoadFromEnvironmentVariables) {\r
+    // Set environment variables\r
+#ifdef _WIN32\r
+    _putenv(\"BINANCE_API_KEY=envApiKey12345678901234567890123456789012345678901234567890\");\r
+    _putenv(\"BINANCE_SECRET_KEY=envSecretKey123456789012345678901234567890123456789012345\");\r
+#else\r
+    setenv(\"BINANCE_API_KEY\", \"envApiKey12345678901234567890123456789012345678901234567890\", 1);\r
+    setenv(\"BINANCE_SECRET_KEY\", \"envSecretKey123456789012345678901234567890123456789012345\", 1);\r
+#endif\r
+    \r
+    EXPECT_TRUE(auth_manager->load_credentials());\r
+    EXPECT_TRUE(auth_manager->validate_credentials());\r
+    \r
+    auto credentials = auth_manager->get_credentials();\r
+    ASSERT_TRUE(credentials.has_value());\r
+    EXPECT_EQ(credentials->api_key, \"envApiKey12345678901234567890123456789012345678901234567890\");\r
+    EXPECT_EQ(credentials->secret_key, \"envSecretKey123456789012345678901234567890123456789012345\");\r
+    \r
+    // Clean up\r
+    unsetenv(\"BINANCE_API_KEY\");\r
+    unsetenv(\"BINANCE_SECRET_KEY\");\r
+}\r
+\r
+TEST_F(AuthManagerTest, LoadCredentialsFallback) {\r
+    // No environment variables, should fallback to config file\r
+    EXPECT_TRUE(auth_manager->load_credentials_from_file(test_config_file));\r
+    \r
+    // Create auth_config.json for the load_credentials() method\r
+    std::ofstream file(\"auth_config.json\");\r
+    file << R\"({\r
+        \"api_key\": \"configApiKey12345678901234567890123456789012345678901234567890\",\r
+        \"secret_key\": \"configSecretKey123456789012345678901234567890123456789012345\"\r
+    })\";\r
+    file.close();\r
+    \r
+    // Clear current credentials\r
+    auth_manager->clear_credentials();\r
+    \r
+    // Load should fallback to config file\r
+    EXPECT_TRUE(auth_manager->load_credentials());\r
+    \r
+    // Clean up\r
+    std::remove(\"auth_config.json\");\r
+}\r"
+    },
+    {
+      "directory": "tests",
+      "fileName": "test_order_book.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "tests/test_order_book.cpp",
+      "size": 467,
+      "lastModified": "2025-07-09 15:34:03",
+      "content": "#include <gtest/gtest.h>\r
+#include \"hft/order_book.h\"\r
+\r
+TEST(OrderBookTest, UpdateAndPrint) {\r
+    hft::OrderBook book;\r
+    hft::Command cmd;\r
+    cmd.type = hft::CommandType::MARKET_DATA;\r
+    cmd.bids.push_back({hft::price_to_int(100.50), 10});\r
+    cmd.asks.push_back({hft::price_to_int(100.55), 5});\r
+\r
+    book.update(cmd);\r
+\r
+    // In a real test, you'd capture stdout or check internal state.\r
+    // Here we just ensure it doesn't crash.\r
+    SUCCEED();\r
+}"
+    },
+    {
+      "directory": "tests",
+      "fileName": "test_trading_client.cpp",
+      "extension": ".cpp",
+      "type": "source",
+      "relativePath": "tests/test_trading_client.cpp",
+      "size": 10866,
+      "lastModified": "2025-07-10 08:19:15",
+      "content": "#include <gtest/gtest.h>\r
+#include \"hft/trading_client.h\"\r
+#include \"hft/auth_manager.h\"\r
+#include <memory>\r
+#include <chrono>\r
+#include <thread>\r
+\r
+class TradingClientTest : public ::testing::Test {\r
+protected:\r
+    void SetUp() override {\r
+        auth_manager = std::make_shared<hft::AuthManager>();\r
+        auth_manager->set_credentials(\r
+            \"testApiKey12345678901234567890123456789012345678901234567890\",\r
+            \"testSecretKey123456789012345678901234567890123456789012345\"\r
+        );\r
+        \r
+        trading_client = std::make_unique<hft::TradingClient>(auth_manager);\r
+        \r
+        // Set up callbacks for testing\r
+        order_callback_called = false;\r
+        trade_callback_called = false;\r
+        error_callback_called = false;\r
+        last_error_message = \"\";\r
+        \r
+        trading_client->set_order_callback([this](const hft::Order& order) {\r
+            order_callback_called = true;\r
+            last_order = order;\r
+        });\r
+        \r
+        trading_client->set_trade_callback([this](const hft::Trade& trade) {\r
+            trade_callback_called = true;\r
+            last_trade = trade;\r
+        });\r
+        \r
+        trading_client->set_error_callback([this](const std::string& error) {\r
+            error_callback_called = true;\r
+            last_error_message = error;\r
+        });\r
+    }\r
+\r
+    void TearDown() override {\r
+        if (trading_client && trading_client->is_connected()) {\r
+            trading_client->disconnect();\r
+        }\r
+    }\r
+\r
+    std::shared_ptr<hft::AuthManager> auth_manager;\r
+    std::unique_ptr<hft::TradingClient> trading_client;\r
+    \r
+    // Callback tracking\r
+    bool order_callback_called;\r
+    bool trade_callback_called;\r
+    bool error_callback_called;\r
+    std::string last_error_message;\r
+    hft::Order last_order;\r
+    hft::Trade last_trade;\r
+};\r
+\r
+TEST_F(TradingClientTest, InitialState) {\r
+    EXPECT_FALSE(trading_client->is_connected());\r
+}\r
+\r
+TEST_F(TradingClientTest, ConnectWithValidCredentials) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    EXPECT_TRUE(trading_client->is_connected());\r
+}\r
+\r
+TEST_F(TradingClientTest, ConnectWithoutCredentials) {\r
+    auto no_auth_manager = std::make_shared<hft::AuthManager>();\r
+    auto no_auth_client = std::make_unique<hft::TradingClient>(no_auth_manager);\r
+    \r
+    EXPECT_FALSE(no_auth_client->connect());\r
+    EXPECT_FALSE(no_auth_client->is_connected());\r
+}\r
+\r
+TEST_F(TradingClientTest, DisconnectAndReconnect) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    EXPECT_TRUE(trading_client->is_connected());\r
+    \r
+    trading_client->disconnect();\r
+    EXPECT_FALSE(trading_client->is_connected());\r
+    \r
+    EXPECT_TRUE(trading_client->connect());\r
+    EXPECT_TRUE(trading_client->is_connected());\r
+}\r
+\r
+TEST_F(TradingClientTest, PlaceValidOrder) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.001);\r
+    \r
+    // Wait for the async operation to complete\r
+    auto order_id = future.get();\r
+    \r
+    EXPECT_FALSE(order_id.empty());\r
+    EXPECT_TRUE(order_callback_called);\r
+    EXPECT_EQ(last_order.symbol, \"BTCUSDT\");\r
+    EXPECT_EQ(last_order.side, hft::Side::BUY);\r
+    EXPECT_EQ(last_order.type, hft::OrderType::LIMIT);\r
+    EXPECT_EQ(last_order.price, 45000.0);\r
+    EXPECT_EQ(last_order.quantity, 0.001);\r
+}\r
+\r
+TEST_F(TradingClientTest, PlaceOrderWithoutConnection) {\r
+    auto future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.001);\r
+    \r
+    auto order_id = future.get();\r
+    \r
+    EXPECT_TRUE(order_id.empty());\r
+    EXPECT_TRUE(error_callback_called);\r
+    EXPECT_FALSE(order_callback_called);\r
+}\r
+\r
+TEST_F(TradingClientTest, PlaceInvalidOrder) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    // Invalid price (negative)\r
+    auto future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, -45000.0, 0.001);\r
+    \r
+    auto order_id = future.get();\r
+    \r
+    EXPECT_TRUE(order_id.empty());\r
+    EXPECT_TRUE(error_callback_called);\r
+    EXPECT_FALSE(order_callback_called);\r
+}\r
+\r
+TEST_F(TradingClientTest, CancelValidOrder) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    // Place an order first\r
+    auto place_future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.001);\r
+    auto order_id = place_future.get();\r
+    EXPECT_FALSE(order_id.empty());\r
+    \r
+    // Reset callback flag\r
+    order_callback_called = false;\r
+    \r
+    // Cancel the order\r
+    auto cancel_future = trading_client->cancel_order(order_id);\r
+    bool success = cancel_future.get();\r
+    \r
+    EXPECT_TRUE(success);\r
+    EXPECT_TRUE(order_callback_called);\r
+    EXPECT_EQ(last_order.status, hft::OrderStatus::CANCELED);\r
+}\r
+\r
+TEST_F(TradingClientTest, CancelNonexistentOrder) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto future = trading_client->cancel_order(\"NONEXISTENT_ORDER\");\r
+    bool success = future.get();\r
+    \r
+    EXPECT_FALSE(success);\r
+    EXPECT_TRUE(error_callback_called);\r
+}\r
+\r
+TEST_F(TradingClientTest, CancelOrderWithoutConnection) {\r
+    auto future = trading_client->cancel_order(\"ORDER_123456\");\r
+    bool success = future.get();\r
+    \r
+    EXPECT_FALSE(success);\r
+    EXPECT_TRUE(error_callback_called);\r
+}\r
+\r
+TEST_F(TradingClientTest, GetOpenOrders) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    // Place some orders\r
+    auto future1 = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.001);\r
+    auto future2 = trading_client->place_order(\"BTCUSDT\", hft::Side::SELL, hft::OrderType::LIMIT, 46000.0, 0.001);\r
+    \r
+    future1.get();\r
+    future2.get();\r
+    \r
+    // Get open orders\r
+    auto orders_future = trading_client->get_open_orders(\"BTCUSDT\");\r
+    auto orders = orders_future.get();\r
+    \r
+    EXPECT_EQ(orders.size(), 2);\r
+}\r
+\r
+TEST_F(TradingClientTest, GetOpenOrdersEmptySymbol) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto orders_future = trading_client->get_open_orders(\"\");\r
+    auto orders = orders_future.get();\r
+    \r
+    EXPECT_TRUE(orders.empty());\r
+}\r
+\r
+TEST_F(TradingClientTest, GetAccountBalance) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto balance_future = trading_client->get_account_balance(\"USDT\");\r
+    double balance = balance_future.get();\r
+    \r
+    EXPECT_GT(balance, 0.0);\r
+}\r
+\r
+TEST_F(TradingClientTest, GetCurrentPrice) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto price_future = trading_client->get_current_price(\"BTCUSDT\");\r
+    double price = price_future.get();\r
+    \r
+    EXPECT_GT(price, 0.0);\r
+}\r
+\r
+TEST_F(TradingClientTest, GetBidAskSpread) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto spread_future = trading_client->get_bid_ask_spread(\"BTCUSDT\");\r
+    auto spread = spread_future.get();\r
+    \r
+    EXPECT_GT(spread.first, 0.0);  // bid\r
+    EXPECT_GT(spread.second, 0.0); // ask\r
+    EXPECT_LT(spread.first, spread.second); // bid < ask\r
+}\r
+\r
+TEST_F(TradingClientTest, RiskManagementMaxOrderValue) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    trading_client->set_max_order_value(1000.0);\r
+    \r
+    // Try to place order with value > max_order_value\r
+    auto future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 1.0); // 45000 > 1000\r
+    \r
+    auto order_id = future.get();\r
+    \r
+    EXPECT_TRUE(order_id.empty());\r
+    EXPECT_TRUE(error_callback_called);\r
+}\r
+\r
+TEST_F(TradingClientTest, RiskManagementMaxPositionSize) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    trading_client->set_max_position_size(\"BTCUSDT\", 0.01);\r
+    \r
+    // Try to place order with quantity > max_position_size\r
+    auto future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.1);\r
+    \r
+    auto order_id = future.get();\r
+    \r
+    EXPECT_TRUE(order_id.empty());\r
+    EXPECT_TRUE(error_callback_called);\r
+}\r
+\r
+TEST_F(TradingClientTest, OrderValidation) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    // Valid order\r
+    EXPECT_TRUE(trading_client->validate_order(\"BTCUSDT\", hft::Side::BUY, 45000.0, 0.001));\r
+    \r
+    // Invalid price\r
+    EXPECT_FALSE(trading_client->validate_order(\"BTCUSDT\", hft::Side::BUY, -45000.0, 0.001));\r
+    EXPECT_FALSE(trading_client->validate_order(\"BTCUSDT\", hft::Side::BUY, 0.0, 0.001));\r
+    \r
+    // Invalid quantity\r
+    EXPECT_FALSE(trading_client->validate_order(\"BTCUSDT\", hft::Side::BUY, 45000.0, 0.0));\r
+    EXPECT_FALSE(trading_client->validate_order(\"BTCUSDT\", hft::Side::BUY, 45000.0, -0.001));\r
+}\r
+\r
+TEST_F(TradingClientTest, CancelAllOrders) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    // Place multiple orders\r
+    auto future1 = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.001);\r
+    auto future2 = trading_client->place_order(\"BTCUSDT\", hft::Side::SELL, hft::OrderType::LIMIT, 46000.0, 0.001);\r
+    auto future3 = trading_client->place_order(\"ETHUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 3000.0, 0.01);\r
+    \r
+    future1.get();\r
+    future2.get();\r
+    future3.get();\r
+    \r
+    // Cancel all BTCUSDT orders\r
+    auto cancel_future = trading_client->cancel_all_orders(\"BTCUSDT\");\r
+    bool success = cancel_future.get();\r
+    \r
+    EXPECT_TRUE(success);\r
+    \r
+    // Check remaining orders\r
+    auto orders_future = trading_client->get_open_orders(\"\");\r
+    auto orders = orders_future.get();\r
+    \r
+    // Should only have ETHUSDT order remaining\r
+    EXPECT_EQ(orders.size(), 1);\r
+    EXPECT_EQ(orders[0].symbol, \"ETHUSDT\");\r
+}\r
+\r
+TEST_F(TradingClientTest, GetOrderStatus) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    // Place an order\r
+    auto place_future = trading_client->place_order(\"BTCUSDT\", hft::Side::BUY, hft::OrderType::LIMIT, 45000.0, 0.001);\r
+    auto order_id = place_future.get();\r
+    EXPECT_FALSE(order_id.empty());\r
+    \r
+    // Get order status\r
+    auto status_future = trading_client->get_order_status(order_id);\r
+    auto order = status_future.get();\r
+    \r
+    EXPECT_EQ(order.id, order_id);\r
+    EXPECT_EQ(order.symbol, \"BTCUSDT\");\r
+    EXPECT_EQ(order.side, hft::Side::BUY);\r
+}\r
+\r
+TEST_F(TradingClientTest, GetOrderStatusNonexistent) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto status_future = trading_client->get_order_status(\"NONEXISTENT_ORDER\");\r
+    auto order = status_future.get();\r
+    \r
+    EXPECT_EQ(order.status, hft::OrderStatus::REJECTED);\r
+}\r
+\r
+TEST_F(TradingClientTest, GetTradeHistory) {\r
+    EXPECT_TRUE(trading_client->connect());\r
+    \r
+    auto trades_future = trading_client->get_trade_history(\"BTCUSDT\", 10);\r
+    auto trades = trades_future.get();\r
+    \r
+    // For mock implementation, should return empty vector\r
+    EXPECT_TRUE(trades.empty());\r
+}\r"
+    }
+  ]
+}
