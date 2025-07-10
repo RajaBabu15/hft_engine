@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
+# Enable coverage reporting
+option(ENABLE_COVERAGE "Enable code coverage reporting" OFF)
+if(ENABLE_COVERAGE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+endif()
+
 # --- External Dependencies ---
 find_package(Boost 1.74 REQUIRED COMPONENTS system thread)
 find_package(OpenSSL REQUIRED)
@@ -22,6 +29,9 @@ add_library(hft_core
         src/matching_engine.cpp
         src/order_book.cpp
         src/websocket_client.cpp
+        src/auth_manager.cpp
+        src/trading_client.cpp
+        src/ui_manager.cpp
 )
 
 # Public headers for hft_core
