@@ -1,0 +1,25 @@
+GitHub Repository Setup Instructions for Raja Babu
+=================================================
+
+1. Go to https://github.com/new
+2. Repository name: hft_engine
+3. Description: High-Frequency Trading Engine - Real-time cryptocurrency market data processor
+4. Select "Private" repository
+5. Do NOT initialize with README
+6. Click "Create repository"
+
+Then run these commands in WSL:
+
+cd /mnt/c/Users/rajab/CLionProjects/hft_engine
+git remote add origin https://github.com/rajababu8520456/hft_engine.git
+git branch -M main
+git push -u origin main
+
+You'll be prompted for your GitHub username and password/token.
+
+For future commits:
+git add .
+git commit -m "Your commit message"
+git push
+
+Your repository will be private and accessible only to you.
