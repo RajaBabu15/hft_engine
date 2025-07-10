@@ -283,7 +283,7 @@ validate_code_quality() {
     # Check for memory leaks (if valgrind is available)
     if command -v valgrind &> /dev/null; then
         log_info "Running memory leak detection..."
-        if valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./hft_tests > /dev/null 2>&1; then
+        if valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./tests/hft_tests > /dev/null 2>&1; then
             log_success "No memory leaks detected"
         else
             log_error "Memory leaks detected"
