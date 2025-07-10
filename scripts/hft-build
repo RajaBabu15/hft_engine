@@ -332,27 +332,40 @@ create_backup() {
     local backup_filename="${project_name}_backup_$(date +%Y%m%d_%H%M%S).bkpf"
     local backup_path="$output_dir/$backup_filename"
     
-    # Define file patterns and directories
+    # Define comprehensive file patterns and directories
     local include_patterns=(
         "*.cpp" "*.c" "*.cc" "*.cxx"     # C++ source files
         "*.h" "*.hpp" "*.hxx"            # Header files
         "*.py" "*.pyx" "*.pyi"           # Python files
+        "*.js" "*.ts" "*.jsx" "*.tsx"    # JavaScript/TypeScript files
+        "*.html" "*.htm" "*.css"         # Web files
         "*.cmake" "*.txt"                # CMake files
-        "*.md" "*.rst"                   # Documentation
+        "*.md" "*.rst" "*.tex"           # Documentation
         "*.json" "*.yaml" "*.yml"        # Configuration files
+        "*.toml" "*.ini" "*.cfg"         # More config files
         "*.sh" "*.bat" "*.ps1"           # Scripts
+        "*.mmd" "*.puml" "*.plantuml"    # Diagram files
+        "*.xml" "*.xsd" "*.xsl"          # XML files
+        "*.sql" "*.db" "*.sqlite"        # Database files
+        "*.env" "*.env.*"                # Environment files
         "*.gitignore" "*.gitattributes"  # Git files
-        "CMakeLists.txt" "README.md" "Dockerfile" "Makefile"
+        "*.dockerfile" "*.dockerignore"  # Docker files
+        "CMakeLists.txt" "README.md" "Dockerfile" "Makefile" "*.mk"
+        "package.json" "package-lock.json" "requirements.txt" "setup.py"
+        "*.license" "LICENSE" "COPYING" "COPYRIGHT"
     )
     
     local exclude_directories=(
-        "build" "Build" "BUILD"
-        "cmake-build-debug" "cmake-build-release"
-        ".git" ".svn" ".hg"
-        ".idea" ".vscode" ".vs"
-        "external" "third_party" "deps"
-        "node_modules" "__pycache__"
-        "hft-build-backup"
+        "build" "Build" "BUILD"                    # Build artifacts
+        "cmake-build-debug" "cmake-build-release" # CMake build dirs
+        "coverage" "test_reports"                 # Generated reports
+        ".git" ".svn" ".hg"                      # Version control
+        ".idea" ".vscode" ".vs"                  # IDE files
+        "external/websocketpp"                    # Large external libraries
+        "node_modules" "__pycache__" ".pytest_cache" # Language-specific cache
+        "*.egg-info" "dist" ".tox"              # Python artifacts
+        ".venv" "venv" "env"                     # Virtual environments
+        "old_backups" "archives"                 # Old backup folders
     )
     
     # Create backup JSON
@@ -444,30 +457,44 @@ create_raw_backup() {
     local backup_filename="${project_name}_backup_raw_$(date +%Y%m%d_%H%M%S).bkpf"
     local backup_path="$output_dir/$backup_filename"
     
-    # Define file extensions to include
+    # Define comprehensive file extensions to include
     local include_extensions=(
         ".cpp" ".c" ".cc" ".cxx"        # C++ source files
         ".h" ".hpp" ".hxx"              # Header files
         ".py" ".pyx" ".pyi"             # Python files
+        ".js" ".ts" ".jsx" ".tsx"      # JavaScript/TypeScript files
+        ".html" ".htm" ".css"           # Web files
         ".cmake" ".txt"                 # CMake files
-        ".md" ".rst"                    # Documentation
+        ".md" ".rst" ".tex"             # Documentation
         ".json" ".yaml" ".yml"          # Configuration files
+        ".toml" ".ini" ".cfg"           # More config files
         ".sh" ".bat" ".ps1"             # Scripts
+        ".mmd" ".puml" ".plantuml"      # Diagram files
+        ".xml" ".xsd" ".xsl"            # XML files
+        ".sql" ".db" ".sqlite"          # Database files
+        ".env"                          # Environment files
         ".gitignore" ".gitattributes"   # Git files
+        ".dockerfile" ".dockerignore"   # Docker files
+        ".license"                     # License files
     )
     
     local special_files=(
         "CMakeLists.txt" "README.md" "Dockerfile" "Makefile" ".gitignore"
+        "package.json" "package-lock.json" "requirements.txt" "setup.py"
+        "LICENSE" "COPYING" "COPYRIGHT" "qodana.yaml" "config.json"
     )
     
     local exclude_directories=(
-        "build" "Build" "BUILD"
-        "cmake-build-debug" "cmake-build-release"
-        ".git" ".svn" ".hg"
-        ".idea" ".vscode" ".vs"
-        "external" "third_party" "deps"
-        "node_modules" "__pycache__"
-        "hft-build-backup"
+        "build" "Build" "BUILD"                    # Build artifacts
+        "cmake-build-debug" "cmake-build-release" # CMake build dirs
+        "coverage" "test_reports"                 # Generated reports
+        ".git" ".svn" ".hg"                      # Version control
+        ".idea" ".vscode" ".vs"                  # IDE files
+        "external/websocketpp"                    # Large external libraries
+        "node_modules" "__pycache__" ".pytest_cache" # Language-specific cache
+        "*.egg-info" "dist" ".tox"              # Python artifacts
+        ".venv" "venv" "env"                     # Virtual environments
+        "old_backups" "archives"                 # Old backup folders
     )
     
     # Function to escape JSON strings (minimal escaping)
