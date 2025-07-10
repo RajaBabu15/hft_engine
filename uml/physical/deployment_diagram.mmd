@@ -1,0 +1,61 @@
+flowchart LR
+%% User Environment
+    subgraph UserEnv["User Environment<br/>(Client Machine)"]
+        browser["Web Browser<br/>Chrome/Firefox<br/>Trading dashboard interface"]
+        terminal["Terminal<br/>CLI<br/>Command line interface"]
+    end
+
+%% Web Server
+    subgraph WebServer["Web Server<br/>Ubuntu 22.04 LTS"]
+        nginx["Nginx<br/>Reverse proxy and static files"]
+        web_app["Web Application<br/>Python 3.9 Dashboard backend"]
+        web_logs["Access Logs<br/>(Log Files)"]
+    end
+
+%% Application Server
+    subgraph AppServer["Application Server<br/>Ubuntu 22.04 LTS"]
+        hft_engine["HFT Engine<br/>C++ Application"]
+        auth_service["Auth Service<br/>C++ Service"]
+        risk_service["Risk Service<br/>C++ Service"]
+        app_config["Configuration<br/>(JSON Files)"]
+        app_logs["Application Logs<br/>(Log Files)"]
+    end
+
+%% Data Server
+    subgraph DataServer["Data Server<br/>Ubuntu 22.04 LTS"]
+        order_db["Order Database<br/>SQLite"]
+        market_cache["Market Data Cache<br/>Redis"]
+        backup_storage["Backup Storage<br/>File System"]
+    end
+
+%% Monitoring Server
+    subgraph MonitorServer["Monitoring Server<br/>Ubuntu 22.04 LTS"]
+        metrics["Metrics Collector<br/>Prometheus"]
+        alerting["Alerting<br/>AlertManager"]
+        dashboard_mon["Monitoring Dashboard<br/>Grafana"]
+    end
+
+%% External Services
+    subgraph External["External Services<br/>Internet"]
+        binance["Binance API<br/>REST/WebSocket"]
+        ntp_server["NTP Server<br/>Network Service"]
+    end
+
+%% Links
+    browser -->|"HTTPS 443"| nginx
+    terminal -->|"TCP 8080"| hft_engine
+    nginx -->|"HTTP 5000"| web_app
+    web_app -->|"TCP 9090"| hft_engine
+
+    hft_engine -->|"IPC (Shared Memory)"| auth_service
+    hft_engine -->|"IPC (Message Queue)"| risk_service
+    hft_engine -->|"SQLite (Local)"| order_db
+    hft_engine -->|"TCP 6379"| market_cache
+
+    hft_engine -->|"HTTPS/WSS 443"| binance
+    AppServer -->|"UDP 123"| ntp_server
+
+    metrics -->|"HTTP 9100"| AppServer
+    metrics -->|"HTTP 9100"| WebServer
+    alerting -->|"HTTP 9090"| metrics
+    dashboard_mon -->|"HTTP 9090"| metrics

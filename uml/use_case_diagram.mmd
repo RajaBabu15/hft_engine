@@ -1,0 +1,28 @@
+graph TB
+    subgraph "HFT Trading System"
+        UC1[Connect to Exchange]
+        UC2[Monitor Order Book]
+        UC3[Place Orders]
+        UC4[Manage Risk Settings]
+        UC5[View Trading Analytics]
+        UC6[Run System Tests]
+        UC7[Generate Coverage Reports]
+        UC8[Configure System]
+    end
+    
+    Trader[Trader]
+    Admin[System Administrator]
+    Exchange[External Exchange API]
+    
+    Trader --> UC1
+    Trader --> UC2
+    Trader --> UC3
+    Trader --> UC5
+    
+    Admin --> UC4
+    Admin --> UC6
+    Admin --> UC7
+    Admin --> UC8
+    
+    UC1 --> Exchange
+    UC3 --> Exchange

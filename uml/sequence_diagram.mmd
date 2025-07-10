@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant U as User
+    participant WS as Web Server
+    participant TC as Trading Client
+    participant AM as Auth Manager
+    participant EX as Exchange API
+    participant OB as Order Book
+    
+    U->>WS: Place Order Request
+    WS->>TC: validateOrder(orderData)
+    TC->>TC: checkRiskLimits()
+    
+    alt Order Valid
+        TC->>AM: getAuthHeaders()
+        AM->>AM: generateSignature()
+        AM-->>TC: authHeaders
+        
+        TC->>EX: POST /api/v3/order
+        EX-->>TC: orderResponse
+        
+        TC->>OB: updateOrderBook(orderData)
+        OB-->>TC: orderUpdated
+        
+        TC-->>WS: orderSuccess
+        WS-->>U: Order Placed Successfully
+        
+    else Order Invalid
+        TC-->>WS: orderError
+        WS-->>U: Order Validation Failed
+    end
+    
+    Note over U,OB: Order placement flow with validation and authentication
+

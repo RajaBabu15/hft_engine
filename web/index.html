@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HFT Engine - Trading Dashboard</title>
+    <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>🚀 High-Frequency Trading Engine</h1>
+        <div class="status-bar">
+            <span id="connection-status" class="status disconnected">Disconnected</span>
+            <span id="current-time"></span>
+        </div>
+    </header>
+
+    <nav class="main-nav">
+        <button class="nav-btn active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="nav-btn" data-tab="trading">💰 Trading</button>
+        <button class="nav-btn" data-tab="tests">🧪 Tests</button>
+        <button class="nav-btn" data-tab="coverage">📈 Coverage</button>
+        <button class="nav-btn" data-tab="settings">⚙️ Settings</button>
+    </nav>
+
+    <main>
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>📋 Order Book - BTCUSDT</h3>
+                    <div class="order-book-container">
+                        <table class="order-book">
+                            <thead>
+                                <tr>
+                                    <th colspan="2">🔴 BIDS</th>
+                                    <th colspan="2">🟢 ASKS</th>
+                                </tr>
+                                <tr>
+                                    <th>Price</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orderBookEntries">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📊 Market Stats</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="label">Last Price:</span>
+                            <span id="last-price" class="value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">24h Change:</span>
+                            <span id="price-change" class="value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Spread:</span>
+                            <span id="spread" class="value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">Volume:</span>
+                            <span id="volume" class="value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🎯 Trading Controls</h3>
+                    <div class="controls">
+                        <button id="connect-btn" class="btn primary">Connect</button>
+                        <button id="disconnect-btn" class="btn secondary">Disconnect</button>
+                        <button id="start-trading" class="btn success">Start Trading</button>
+                        <button id="stop-trading" class="btn danger">Stop Trading</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Tab -->
+        <div id="trading" class="tab-content">
+            <div class="trading-grid">
+                <div class="card">
+                    <h3>📝 Place Order</h3>
+                    <form id="order-form">
+                        <div class="form-group">
+                            <label>Order Type:</label>
+                            <select id="order-type">
+                                <option value="market">Market</option>
+                                <option value="limit">Limit</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Side:</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="side" value="buy" checked> Buy</label>
+                                <label><input type="radio" name="side" value="sell"> Sell</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Quantity:</label>
+                            <input type="number" id="quantity" step="0.0001" placeholder="0.0000">
+                        </div>
+                        <div class="form-group">
+                            <label>Price:</label>
+                            <input type="number" id="price" step="0.01" placeholder="0.00">
+                        </div>
+                        <button type="submit" class="btn primary">Place Order</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h3>📄 Open Orders</h3>
+                    <div class="table-container">
+                        <table class="orders-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Side</th>
+                                    <th>Type</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="open-orders">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📊 Portfolio</h3>
+                    <div class="portfolio">
+                        <div class="balance-item">
+                            <span class="currency">BTC:</span>
+                            <span id="btc-balance" class="balance">0.00000000</span>
+                        </div>
+                        <div class="balance-item">
+                            <span class="currency">USDT:</span>
+                            <span id="usdt-balance" class="balance">0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tests Tab -->
+        <div id="tests" class="tab-content">
+            <div class="card">
+                <h3>🧪 Test Suite</h3>
+                <div class="test-controls">
+                    <button id="run-all-tests" class="btn primary">Run All Tests</button>
+                    <button id="run-unit-tests" class="btn secondary">Unit Tests</button>
+                    <button id="run-integration-tests" class="btn secondary">Integration Tests</button>
+                </div>
+                <div id="test-results" class="test-results">
+                    <div class="test-summary">
+                        <div class="summary-item">
+                            <span class="label">Total:</span>
+                            <span id="total-tests" class="value">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Passed:</span>
+                            <span id="passed-tests" class="value success">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Failed:</span>
+                            <span id="failed-tests" class="value danger">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Duration:</span>
+                            <span id="test-duration" class="value">0ms</span>
+                        </div>
+                    </div>
+                    <div id="test-output" class="test-output">
+                        <pre id="test-log">Click 'Run All Tests' to start testing...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coverage Tab -->
+        <div id="coverage" class="tab-content">
+            <div class="card">
+                <h3>📈 Code Coverage Report</h3>
+                <div class="coverage-summary">
+                    <div class="coverage-item">
+                        <span class="label">Line Coverage:</span>
+                        <div class="progress-bar">
+                            <div id="line-coverage-bar" class="progress" style="width: 0%"></div>
+                        </div>
+                        <span id="line-coverage-percent" class="percentage">0%</span>
+                    </div>
+                    <div class="coverage-item">
+                        <span class="label">Function Coverage:</span>
+                        <div class="progress-bar">
+                            <div id="function-coverage-bar" class="progress" style="width: 0%"></div>
+                        </div>
+                        <span id="function-coverage-percent" class="percentage">0%</span>
+                    </div>
+                    <div class="coverage-item">
+                        <span class="label">Branch Coverage:</span>
+                        <div class="progress-bar">
+                            <div id="branch-coverage-bar" class="progress" style="width: 0%"></div>
+                        </div>
+                        <span id="branch-coverage-percent" class="percentage">0%</span>
+                    </div>
+                </div>
+                <button id="generate-coverage" class="btn primary">Generate Coverage Report</button>
+                <div id="coverage-details" class="coverage-details">
+                    <!-- Coverage details will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings" class="tab-content">
+            <div class="card">
+                <h3>⚙️ Settings</h3>
+                <form id="settings-form">
+                    <div class="form-group">
+                        <label>WebSocket URL:</label>
+                        <input type="text" id="ws-url" value="ws://localhost:8080/ws" placeholder="ws://localhost:8080/ws">
+                    </div>
+                    <div class="form-group">
+                        <label>Symbol:</label>
+                        <input type="text" id="symbol" value="btcusdt" placeholder="btcusdt">
+                    </div>
+                    <div class="form-group">
+                        <label>Update Interval (ms):</label>
+                        <input type="number" id="update-interval" value="100" min="50" max="5000">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Order Book Depth:</label>
+                        <input type="number" id="book-depth" value="20" min="5" max="100">
+                    </div>
+                    <button type="submit" class="btn primary">Save Settings</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 HFT Engine by Raja Babu</p>
+    </footer>
+
+    <script src="assets/js/app.js"></script>
+</body>
+</html>
+

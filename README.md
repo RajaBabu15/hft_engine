@@ -17,6 +17,7 @@ A professional-grade, ultra-low-latency C++ engine for receiving real-time crypt
 - [🏗️ Architecture Overview](#️-architecture-overview)
 - [🚀 Getting Started](#-getting-started)
 - [🛠️ Unified Build System](#️-unified-build-system)
+- [🌐 Web Interface](#-web-interface)
 - [🧪 Testing & Code Quality](#-testing--code-quality)
 - [🐳 Docker Support](#-docker-support)
 - [🛣️ Future Extensions](#️-future-extensions)
@@ -303,6 +304,94 @@ CMAKE_VERBOSE_MAKEFILE=ON ./scripts/hft-build build
 # Skip unnecessary checks
 ./scripts/hft-build build --no-tests
 ```
+
+## 🌐 Web Interface
+
+The HFT Engine includes a modern, responsive web-based trading dashboard that provides real-time monitoring, testing, and coverage reporting capabilities.
+
+### ✨ Features
+
+- **📊 Real-time Dashboard** - Live order book, market stats, and connection management
+- **💰 Trading Interface** - Order placement, portfolio tracking, and order management
+- **🧪 Browser-based Testing** - Run unit and integration tests directly in the browser
+- **📈 Coverage Reports** - Visual coverage reports with file-level details
+- **⚙️ Configuration** - Customizable settings for WebSocket, symbols, and update intervals
+
+### 🚀 Quick Start
+
+1. **Build the project first:**
+   ```bash
+   ./scripts/hft-build build
+   ```
+
+2. **Start the web server:**
+   ```bash
+   python3 web/server.py
+   ```
+
+3. **Open in browser:**
+   Navigate to http://localhost:8080
+
+### 🖥️ Interface Sections
+
+| Section | Description | Features |
+|---------|-------------|----------|
+| **📊 Dashboard** | Main trading overview | Order book, market stats, connection controls |
+| **💰 Trading** | Order management | Place orders, view portfolio, cancel orders |
+| **🧪 Tests** | Test execution | Run unit/integration tests, view results |
+| **📈 Coverage** | Code coverage | Line/function/branch coverage with visual reports |
+| **⚙️ Settings** | Configuration | WebSocket URL, symbols, update intervals |
+
+### 🎯 Browser Testing
+
+Run your C++ tests directly in the browser:
+
+1. Click the **Tests** tab
+2. Choose test type:
+   - **Run All Tests** - Complete test suite (35 tests)
+   - **Unit Tests** - Unit tests only (25 tests)  
+   - **Integration Tests** - Integration tests only (10 tests)
+3. Watch real-time output and statistics
+
+### 📊 Coverage Visualization
+
+Generate and view code coverage reports:
+
+1. Click the **Coverage** tab
+2. Click **"Generate Coverage Report"**
+3. View interactive progress bars and file details
+4. Color-coded quality indicators (Green ≥90%, Orange ≥70%, Red <70%)
+
+### 🎨 Modern UI Features
+
+- **Dark Theme** - Professional dark gradient design
+- **Responsive Layout** - Works on desktop, tablet, and mobile
+- **Real-time Updates** - Live data with smooth animations
+- **Interactive Elements** - Hover effects and smooth transitions
+- **Typography** - Monospace fonts for trading data
+
+### 🔧 Technical Details
+
+- **Frontend:** Vanilla JavaScript (ES6+), HTML5, CSS3
+- **Backend:** Python HTTP server with REST API endpoints
+- **Real-time Data:** WebSocket-style updates with 100ms intervals
+- **Browser Support:** Chrome 80+, Firefox 75+, Safari 13+, Edge 80+
+
+### 📁 Web Files Structure
+
+```
+web/
+├── index.html          # Main dashboard interface
+├── assets/
+│   ├── css/
+│   │   └── styles.css  # Modern CSS with gradients
+│   └── js/
+│       └── app.js      # JavaScript application
+├── server.py           # Python HTTP/API server
+└── README.md           # Web interface documentation
+```
+
+For detailed web interface documentation, see [web/README.md](web/README.md).
 
 ## 🧪 Testing & Code Quality
 

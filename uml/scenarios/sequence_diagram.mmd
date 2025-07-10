@@ -1,0 +1,52 @@
+sequenceDiagram
+    participant T as Trader
+    participant UI as Web Interface
+    participant AG as API Gateway
+    participant TE as Trading Engine
+    participant RM as Risk Manager
+    participant AM as Auth Manager
+    participant OB as Order Book
+    participant EX as Exchange API
+    participant DB as Database
+    participant NS as Notification Service
+
+    T->>UI: Enter order details
+    UI->>UI: Validate input format
+    UI->>AG: Submit order request
+
+    AG->>AM: Authenticate request
+    AM->>AM: Validate API signature
+    AM-->>AG: Authentication confirmed
+
+    AG->>TE: Forward order request
+    TE->>TE: Parse order data
+    TE->>RM: Validate risk parameters
+
+    RM->>RM: Check position limits
+    RM->>RM: Check order size limits
+    RM->>DB: Query current positions
+    DB-->>RM: Position data
+    RM-->>TE: Risk validation passed
+
+    TE->>OB: Check market conditions
+    OB-->>TE: Current bid/ask spread
+    TE->>TE: Calculate order priority
+
+    TE->>AM: Get exchange credentials
+    AM-->>TE: Signed request headers
+    TE->>EX: Submit order to exchange
+
+    EX->>EX: Process order
+    EX-->>TE: Order accepted (Order ID: 12345)
+
+    TE->>DB: Persist order state
+    TE->>OB: Update order book
+    TE->>NS: Send confirmation notification
+
+    TE-->>AG: Order placement successful
+    AG-->>UI: Success response
+    UI-->>T: Display order confirmation
+
+    NS->>T: Email/SMS notification
+
+    Note over T,NS: Order successfully placed and confirmed

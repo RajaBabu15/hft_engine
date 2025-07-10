@@ -1,0 +1,54 @@
+graph TB
+    subgraph "HFT Trading System"
+        UC1[Connect to Exchange]
+        UC2[Monitor Real-time Data]
+        UC3[Place Market Order]
+        UC4[Place Limit Order]
+        UC5[Cancel Order]
+        UC6[View Portfolio]
+        UC7[Configure Risk Parameters]
+        UC8[Run System Diagnostics]
+        UC9[Generate Trading Reports]
+        UC10[Backup System Data]
+        UC11[Monitor System Health]
+        UC12[Configure API Keys]
+    end
+
+    Trader[Trader]
+    Admin[System Administrator]
+    RiskManager[Risk Manager]
+    Exchange[Exchange API]
+    MonitoringSystem[Monitoring System]
+
+    Trader --> UC1
+    Trader --> UC2
+    Trader --> UC3
+    Trader --> UC4
+    Trader --> UC5
+    Trader --> UC6
+
+    Admin --> UC8
+    Admin --> UC10
+    Admin --> UC11
+    Admin --> UC12
+
+    RiskManager --> UC7
+    RiskManager --> UC9
+    RiskManager --> UC11
+
+    UC1 --> Exchange
+    UC3 --> Exchange
+    UC4 --> Exchange
+    UC5 --> Exchange
+
+    UC11 --> MonitoringSystem
+    UC8 --> MonitoringSystem
+    UC4 -->|extends| UC3
+    UC5 -->|extends| UC3
+    UC5 -->|extends| UC4
+    UC3 -->|includes| UC1
+    UC4 -->|includes| UC1
+    UC5 -->|includes| UC1
+    UC6 -->|includes| UC1
+    UC9 -->|includes| UC2
+    UC7 -->|includes| UC8

@@ -1,0 +1,29 @@
+C4Component
+    title Trading Engine Internal Structure
+
+    Container_Boundary(matching, "Matching Engine", "Core Component") {
+        Component_Ext(ws_port, "WebSocket Port", "Input")
+        Component_Ext(api_port, "REST API Port", "Input/Output")
+        Component_Ext(data_port, "Data Port", "Output")
+
+        Component(processor, "Message Processor", "Thread Pool")
+        Component(validator, "Order Validator", "Rules Engine")
+        Component(book_manager, "Book Manager", "State Manager")
+        Component(risk_engine, "Risk Engine", "Safety Controller")
+
+        Rel(ws_port, processor, "market data")
+        Rel(api_port, processor, "order requests")
+        Rel(processor, validator, "validate")
+        Rel(validator, risk_engine, "check limits")
+        Rel(risk_engine, book_manager, "approved orders")
+        Rel(book_manager, data_port, "book updates")
+        Rel(book_manager, api_port, "order status")
+
+        Component_Ext(config_connector, "Config Connector", "External")
+        Component_Ext(db_connector, "Database Connector", "External")
+        Component_Ext(exchange_connector, "Exchange Connector", "External")
+
+        Rel(risk_engine, config_connector, "load rules")
+        Rel(book_manager, db_connector, "persist state")
+        Rel(processor, exchange_connector, "send orders")
+    }
