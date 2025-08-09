@@ -1,6 +1,6 @@
 #include "hft/matching_engine.h"
 #include <chrono>
-#include <x86intrin.h>
+#include <thread>
 
 namespace hft {
 
@@ -33,7 +33,7 @@ void MatchingEngine::writer_thread_func() {
       order_book_.print_book(book_depth_);
       delete cmdPtr;
     } else {
-      _mm_pause();
+      std::this_thread::yield();
     }
   }
 }
