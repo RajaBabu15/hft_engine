@@ -51,6 +51,8 @@ int main(){
     std::cout << "Avg per order: " << per_order_ns << " ns\n";
     std::cout << "Trades: " << engine.trade_count() << ", Accepts: " << engine.accept_count() << ", Rejects: " << engine.reject_count() << "\n";
 
+    
+
     // Emit deep profiling reports (summary and detailed)
     std::cout << hft::DeepProfiler::instance().generate_report();
     std::cout << hft::DeepProfiler::instance().generate_detailed_report();

@@ -5,7 +5,6 @@
 #include <vector>
 
 namespace hft {
-    // Updated command types for sharded matching engine
     enum class CommandType : uint8_t {
         NEW_ORDER,
         CANCEL_ORDER,
@@ -19,14 +18,10 @@ namespace hft {
 
     struct Command {
         CommandType type;
-        
-        // For new orders: move-in Order (POD, efficient to move)
-        hft::Order order;          // moved into queue for NEW_ORDER
-        
-        // For cancel: order id
+
+        hft::Order order;        
         OrderId order_id;
         
-        // Market data fields (if needed)
         Timestamp ts;
         std::vector<Level> bids_;
         std::vector<Level> asks_;

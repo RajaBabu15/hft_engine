@@ -13,8 +13,6 @@
 #include <mutex>
 
 namespace hft {
-
-// High-resolution timer for line-level profiling
 class DeepProfiler {
 public:
     struct ProfilePoint {

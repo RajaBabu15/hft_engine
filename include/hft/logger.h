@@ -12,7 +12,6 @@
 #include <mutex>
 #include <condition_variable>
 
-// Forward declarations
 namespace hft {
     struct Trade;
     struct Order;

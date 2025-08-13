@@ -19,12 +19,12 @@
 
 
 #if defined(_WIN32)
-  #define NOMINMAX
-  #include <windows.h>
+    #define NOMINMAX
+    #include <windows.h>
 #else
-  #include <stdlib.h>  
-  #include <unistd.h>  
-  #include <sys/mman.h> 
+    #include <stdlib.h>  
+    #include <unistd.h>  
+    #include <sys/mman.h> 
 #endif
 
 namespace hft {
@@ -165,7 +165,11 @@ namespace hft {
             }
 
         [[gnu::hot]] OrderNode *acquire() noexcept {
-            if ([[unlikely]](free_top_ <= 0)) return nullptr;
+            #if defined(__GNUC__) || defined(__clang__)
+            if (__builtin_expect(!!(free_top_ <= 0), 0)) return nullptr;
+            #else
+            if ((free_top_ <= 0)) return nullptr;
+            #endif
             --free_top_;
             uint32_t idx = free_indices_[free_top_];
             OrderNode *node = &nodes_[idx];
@@ -175,13 +179,21 @@ namespace hft {
         }
     
         [[gnu::hot]] void release(OrderNode *node) noexcept {
-            if ([[likely]](free_top_ < static_cast<int32_t>(capacity_))) {
+            #if defined(__GNUC__) || defined(__clang__)
+            if (__builtin_expect(!!(free_top_ < static_cast<int32_t>(capacity_)), 1)) {
+            #else
+            if ((free_top_ < static_cast<int32_t>(capacity_))) {
+            #endif
                 free_indices_[free_top_++] = node->index;
             }
         }
 
         OrderNode *get_node(uint32_t index) noexcept {
-            if ([[unlikely]](index >= capacity_)) return nullptr;
+            #if defined(__GNUC__) || defined(__clang__)
+            if (__builtin_expect(!!(index >= capacity_), 0)) return nullptr;
+            #else
+            if ((index >= capacity_)) return nullptr;
+            #endif
             return &nodes_[index];
         }
 

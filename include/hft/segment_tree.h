@@ -15,6 +15,7 @@
     #include <unistd.h> 
 #endif
 
+#include "hft/deep_profiler.h"
 #if defined(HFT_ENABLE_MICRO_OPTS)
     #if defined(__GNUC__) || defined(__clang__)
     #elif defined(_MSC_VER)
@@ -140,6 +141,8 @@ namespace hft {
         p[bytes - 1] = p[bytes - 1];
     }
 
+    
+
     class alignas(64) SegmentTree { 
         size_t n_ = 0;
         std::vector<uint32_t, AlignedAllocator<uint32_t, 64>> t_;
@@ -159,6 +162,7 @@ namespace hft {
             inline size_t size() const noexcept { return n_; }
 
             HFT_HOT HFT_FORCE_INLINE void set(size_t idx, uint32_t val) noexcept {
+                DEEP_PROFILE_FUNCTION();
                 assert(idx < n_);
                 #if defined(HFT_ENABLE_MICRO_OPTS)
                     uint32_t* HFT_RESTRICT tree = t_.data();
@@ -217,6 +221,7 @@ namespace hft {
             }
 
             HFT_HOT HFT_FORCE_INLINE int find_first(size_t l, size_t r) const noexcept {
+                DEEP_PROFILE_FUNCTION();
                 if (HFT_UNLIKELY(l > r) || HFT_UNLIKELY(r >= n_)) return -1;
 
                 #if defined(HFT_ENABLE_MICRO_OPTS)
@@ -226,7 +231,10 @@ namespace hft {
                 #endif
 
                 if (HFT_UNLIKELY(tree[1] == 0)) return -1;
-                if (!any(l, r)) return -1;
+                {
+                    DEEP_PROFILE_SCOPE("SegmentTree.find_first.any");
+                    if (!any(l, r)) return -1;
+                }
 
                 size_t node = 1;
                 size_t nl = 0;
