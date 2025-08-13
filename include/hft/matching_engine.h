@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hft/types.h"
+#include "hft/platform.h"
 #include "hft/order.h"
 #include "hft/command.h"
 #include "hft/hot_order_view.h"
@@ -8,6 +9,13 @@
 #include "hft/logger.h"
 #include "hft/deep_profiler.h"
 #include "hft/segment_tree.h"
+#include "hft/epoch_manager.h"
+#include "hft/order_node.h"
+#include "hft/index_pool.h"
+#include "hft/queue.h"
+#include "hft/price_tracker.h"
+#include "hft/matching_engine_types.h"
+#include "hft/order_book.h"
 #include "hft/trade.h"
 
 #include <atomic>
@@ -20,27 +28,7 @@
 #include <memory>
 #include <chrono>
 
-// Platform-specific includes and optimizations
-#if defined(__AVX512F__) || defined(__AVX512DQ__)
-#include <immintrin.h>
-#endif
-
-#if defined(__aarch64__) || defined(_M_ARM64)
-#include <arm_neon.h>
-#define CPU_RELAX() __asm__ volatile("yield" ::: "memory")
-#define PREFETCH_L1(addr) __builtin_prefetch((const void*)(addr), 0, 3)
-#define PREFETCH_L2(addr) __builtin_prefetch((const void*)(addr), 0, 2)
-#elif defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
-#include <immintrin.h>
-#define CPU_RELAX() _mm_pause()
-#define PREFETCH_L1(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
-#define PREFETCH_L2(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T1)
-#else
-#define CPU_RELAX() do {} while(0)
-#define PREFETCH_L1(addr) do {} while(0)
-#define PREFETCH_L2(addr) do {} while(0)
-#endif
-
+// Linux-specific NUMA support
 #ifdef __linux__
 #include <pthread.h>
 #include <numa.h>
@@ -48,49 +36,16 @@
 #define NUMA_AWARE
 #endif
 
-// Compiler optimization hints
-#define FORCE_INLINE __attribute__((always_inline)) inline
-#define HOT_PATH __attribute__((hot))
-#define COLD_PATH __attribute__((cold))
-#define LIKELY(x) __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define ASSUME_ALIGNED(ptr, alignment) __builtin_assume_aligned((ptr), (alignment))
-#define CACHE_ALIGNED alignas(64)
-
 namespace hft {
-    constexpr size_t CACHE_LINE_SIZE = 64;
-    constexpr size_t SIMD_WIDTH = 8;
-    constexpr uint32_t INVALID_INDEX = 0xFFFFFFFF;
+    using hft::CACHE_LINE_SIZE;
+    using hft::SIMD_WIDTH;
     constexpr size_t MAX_PRICE_LEVELS = 10000;
 
     // Forward declarations
     class MatchingEngine;
     class OrderBook;
 
-    // =============================================================================
-    // CORE DATA STRUCTURES
-    // =============================================================================
-
-#pragma pack(push, 1)
-    struct OrderHot {
-        OrderId id;
-        Price price;
-        Quantity qty;
-        Quantity filled;
-        Timestamp timestamp;
-        Symbol symbol;
-        OrderStatus status;
-        Side side;
-        OrderType type;
-        TimeInForce tif;
-    };
-
-    struct OrderCold {
-        UserId user_id;
-    };
-#pragma pack(pop)
-
-    static_assert(sizeof(OrderHot) <= 64, "OrderHot should fit within cache-friendly size");
+    // OrderHot/OrderCold moved to hft/order_node.h
 
     inline OrderId make_order_id(uint32_t index, uint32_t generation) noexcept {
         return (static_cast<OrderId>(generation) << 32) | static_cast<OrderId>(index);
@@ -104,325 +59,19 @@ namespace hft {
         return static_cast<uint32_t>(id >> 32);
     }
 
-    // Unified order node structure
-    struct alignas(CACHE_LINE_SIZE) OrderNode {
-        uint32_t index;
-        uint32_t generation;
-        OrderHot hot;
-        OrderCold cold;
-        uint32_t next_idx = INVALID_INDEX;
-        uint32_t prev_idx = INVALID_INDEX;
-
-        void reset() noexcept {
-            hot.filled = 0;
-            hot.status = OrderStatus::NEW;
-            hot.timestamp = 0;
-            next_idx = INVALID_INDEX;
-            prev_idx = INVALID_INDEX;
-        }
-    };
-
     // Forward declare helper that converts internal node to public Order
     hft::Order make_public_order(const OrderNode *node) noexcept;
-
-    // =============================================================================
-    // MEMORY MANAGEMENT
-    // =============================================================================
-
-    class EpochManager {
-    public:
-        static constexpr int MAX_THREADS = 64;
-
-        void enter_epoch() {
-            thread_local int tid = register_thread();
-            current_epochs_[tid].store(global_epoch_.load(std::memory_order_relaxed), std::memory_order_relaxed);
-        }
-
-        void exit_epoch() {
-            thread_local int tid = register_thread();
-            current_epochs_[tid].store(INVALID_EPOCH, std::memory_order_relaxed);
-        }
-
-        void defer_reclaim(OrderNode *node) {
-            thread_local std::vector<OrderNode *> &list = deferred_list();
-            list.push_back(node);
-            if (list.size() > 1000) {
-                try_reclaim();
-            }
-        }
-
-        void try_reclaim() {
-            const uint64_t min_epoch = get_min_epoch();
-            thread_local std::vector<OrderNode *> &list = deferred_list();
-
-            auto it = std::partition(list.begin(), list.end(), [&](OrderNode *node) {
-                return node->generation > min_epoch;
-            });
-
-            for (auto p = list.begin(); p != it; ++p) {
-                reclaim_node(*p);
-            }
-            list.erase(list.begin(), it);
-        }
-
-    private:
-        int register_thread() {
-            static std::atomic<int> counter{0};
-            return counter.fetch_add(1, std::memory_order_relaxed);
-        }
-
-        std::vector<OrderNode *> &deferred_list() {
-            thread_local std::vector<OrderNode *> list;
-            return list;
-        }
-
-        uint64_t get_min_epoch() {
-            uint64_t min_epoch = global_epoch_.load(std::memory_order_relaxed);
-            for (auto &epoch: current_epochs_) {
-                uint64_t e = epoch.load(std::memory_order_relaxed);
-                if (e != INVALID_EPOCH && e < min_epoch) {
-                    min_epoch = e;
-                }
-            }
-            return min_epoch;
-        }
-
-        void reclaim_node(OrderNode *node) {
-            delete node;
-        }
-
-        static constexpr uint64_t INVALID_EPOCH = ~0ull;
-        alignas(CACHE_LINE_SIZE) std::atomic<uint64_t> global_epoch_{0};
-        alignas(CACHE_LINE_SIZE) std::array<std::atomic<uint64_t>, MAX_THREADS> current_epochs_;
-    };
-
-    class IndexPool {
-    public:
-        explicit IndexPool(size_t capacity)
-            : capacity_(capacity),
-              free_stack_(capacity),
-              top_(static_cast<int32_t>(capacity)) {
-#ifdef NUMA_AWARE
-            int numa_node = numa_node_of_cpu(sched_getcpu());
-            void *aligned_mem = numa_alloc_onnode(sizeof(OrderNode) * capacity, numa_node);
-            if (!aligned_mem) throw std::bad_alloc();
-            nodes_ = reinterpret_cast<OrderNode *>(aligned_mem);
-            madvise(nodes_, capacity * sizeof(OrderNode), MADV_HUGEPAGE);
-#else
-            nodes_ = new OrderNode[capacity];
-#endif
-
-            for (uint32_t i = 0; i < capacity; ++i) {
-                nodes_[i].index = i;
-                nodes_[i].generation = 0;
-                free_stack_[i] = i;
-            }
-        }
-
-        ~IndexPool() {
-#ifdef NUMA_AWARE
-            if (nodes_) numa_free(nodes_, capacity_ * sizeof(OrderNode));
-#else
-            delete[] nodes_;
-#endif
-        }
-
-        OrderNode *acquire() noexcept {
-            int32_t old_top = top_.fetch_sub(1, std::memory_order_acq_rel);
-            if (old_top <= 0) {
-                top_.fetch_add(1, std::memory_order_release);
-                return nullptr;
-            }
-            int32_t pos = old_top - 1;
-            uint32_t idx = free_stack_[pos];
-            OrderNode *node = &nodes_[idx];
-            ++node->generation;
-            node->reset();
-            return node;
-        }
-
-        void release(OrderNode *node) noexcept {
-            int32_t pos = top_.fetch_add(1, std::memory_order_acq_rel);
-            if (static_cast<size_t>(pos) < free_stack_.size()) {
-                free_stack_[pos] = node->index;
-            }
-        }
-
-        OrderNode *get_node(uint32_t index) noexcept {
-            if (index >= capacity_) return nullptr;
-            return &nodes_[index];
-        }
-
-        size_t capacity() const noexcept { return capacity_; }
-
-    private:
-        OrderNode *nodes_{nullptr};
-        size_t capacity_{0};
-        std::vector<uint32_t> free_stack_;
-        alignas(CACHE_LINE_SIZE) std::atomic<int32_t> top_;
-    };
-
-    // =============================================================================
-    // QUEUES AND COMMUNICATION
-    // =============================================================================
-
-    template<typename T, size_t Size>
-    class Queue {
-    public:
-        Queue() : head_(0), tail_(0) {}
-
-        bool try_enqueue(T &&item) noexcept {
-            size_t head = head_.load(std::memory_order_relaxed);
-            size_t next_head = next(head);
-            if (next_head == tail_.load(std::memory_order_acquire))
-                return false;
-
-            buffer_[head] = std::move(item);
-            head_.store(next_head, std::memory_order_release);
-            return true;
-        }
-
-        bool try_dequeue(T &item) noexcept {
-            size_t tail = tail_.load(std::memory_order_relaxed);
-            if (tail == head_.load(std::memory_order_acquire))
-                return false;
-
-            item = std::move(buffer_[tail]);
-            tail_.store(next(tail), std::memory_order_release);
-            return true;
-        }
-
-        template<size_t BatchSize>
-        size_t dequeue_bulk(std::array<T, BatchSize> &output) noexcept {
-            size_t tail = tail_.load(std::memory_order_relaxed);
-            size_t head = head_.load(std::memory_order_acquire);
-            
-            if (tail == head) return 0;
-            
-            size_t avail = (head >= tail) ? (head - tail) : (Size - tail + head);
-            size_t to_copy = std::min(avail, BatchSize);
-            
-            for (size_t i = 0; i < to_copy; ++i) {
-                output[i] = std::move(buffer_[tail]);
-                tail = next(tail);
-            }
-            
-            tail_.store(tail, std::memory_order_release);
-            return to_copy;
-        }
-
-    private:
-        size_t next(size_t current) const noexcept { return (current + 1) % Size; }
-
-        alignas(CACHE_LINE_SIZE) std::atomic<size_t> head_;
-        alignas(CACHE_LINE_SIZE) std::atomic<size_t> tail_;
-        std::array<T, Size> buffer_;
-    };
-
-    // =============================================================================
-    // PRICE LEVEL AND SEGMENT TREE
-    // =============================================================================
-
-    /**
-     * Segment tree for O(1) best price discovery
-     */
-    template<bool IsMaxTree>
-    class PriceTracker {
-    public:
-        explicit PriceTracker(size_t price_levels) : 
-            original_size_(price_levels), n_(1) {
-            
-            while (n_ < price_levels) n_ *= 2;
-            
-            price_tree_.resize(2 * n_);
-            count_tree_.resize(2 * n_);
-            
-            const Price neutral_price = IsMaxTree ? 0 : UINT64_MAX;
-            std::fill(price_tree_.begin(), price_tree_.end(), neutral_price);
-            std::fill(count_tree_.begin(), count_tree_.end(), 0);
-        }
-        
-        inline void update_level(size_t level_idx, Price price, uint32_t count) noexcept {
-            if (level_idx >= original_size_) return;
-            
-            size_t tree_idx = n_ + level_idx;
-            price_tree_[tree_idx] = price;
-            count_tree_[tree_idx] = count;
-            
-            for (tree_idx /= 2; tree_idx >= 1; tree_idx /= 2) {
-                const size_t left_child = tree_idx * 2;
-                const size_t right_child = tree_idx * 2 + 1;
-                
-                const uint32_t left_count = count_tree_[left_child];
-                const uint32_t right_count = count_tree_[right_child];
-                const Price left_price = price_tree_[left_child];
-                const Price right_price = price_tree_[right_child];
-                
-                if constexpr (IsMaxTree) {
-                    if (left_count > 0 && right_count > 0) {
-                        price_tree_[tree_idx] = std::max(left_price, right_price);
-                        count_tree_[tree_idx] = left_count + right_count;
-                    } else if (left_count > 0) {
-                        price_tree_[tree_idx] = left_price;
-                        count_tree_[tree_idx] = left_count;
-                    } else if (right_count > 0) {
-                        price_tree_[tree_idx] = right_price;
-                        count_tree_[tree_idx] = right_count;
-                    } else {
-                        price_tree_[tree_idx] = 0;
-                        count_tree_[tree_idx] = 0;
-                    }
-                } else {
-                    if (left_count > 0 && right_count > 0) {
-                        price_tree_[tree_idx] = std::min(left_price, right_price);
-                        count_tree_[tree_idx] = left_count + right_count;
-                    } else if (left_count > 0) {
-                        price_tree_[tree_idx] = left_price;
-                        count_tree_[tree_idx] = left_count;
-                    } else if (right_count > 0) {
-                        price_tree_[tree_idx] = right_price;  
-                        count_tree_[tree_idx] = right_count;
-                    } else {
-                        price_tree_[tree_idx] = UINT64_MAX;
-                        count_tree_[tree_idx] = 0;
-                    }
-                }
-            }
-        }
-        
-        inline Price get_best_price() const noexcept {
-            return (count_tree_[1] > 0) ? price_tree_[1] : (IsMaxTree ? 0 : UINT64_MAX);
-        }
-        
-        inline bool has_orders() const noexcept {
-            return count_tree_[1] > 0;
-        }
-        
-        inline void clear() noexcept {
-            const Price neutral_price = IsMaxTree ? 0 : UINT64_MAX;
-            std::fill(price_tree_.begin(), price_tree_.end(), neutral_price);
-            std::fill(count_tree_.begin(), count_tree_.end(), 0);
-        }
-        
-    private:
-        const size_t original_size_;
-        size_t n_;
-        alignas(64) std::vector<Price> price_tree_;
-        alignas(64) std::vector<uint32_t> count_tree_;
-    };
     
+    // IndexPool moved to hft/index_pool.h
+
+    
+
+    // PriceTracker moved to hft/price_tracker.h
     using BidTracker = PriceTracker<true>;
     using AskTracker = PriceTracker<false>;
 
-    // =============================================================================
-    // SIMD MATCHING UTILITIES
-    // =============================================================================
-
-    struct SimdMatchResult {
-        uint32_t indices[16];
-        Quantity qtys[16];
-        uint32_t count{0};
-    };
+  
+    // SimdMatchResult moved to hft/matching_engine_types.h
 
     FORCE_INLINE SimdMatchResult match_orders_simd(const OrderNode* const* orders,
                                                    const Quantity* qtys,
@@ -510,210 +159,9 @@ namespace hft {
     // PRICE LEVEL
     // =============================================================================
 
-    struct alignas(64) PriceLevel {
-        std::atomic<Price> price{0};
-        std::atomic<uint32_t> order_count{0};
-        std::atomic<Quantity> total_qty{0};
-        
-        // SIMD-friendly hot window for fast matching
-        std::array<OrderNode*, 32> orders{};
-        std::array<Quantity, 32> quantities{};
-        std::atomic<uint32_t> hot_count{0};
-        
-        // Overflow storage for high activity levels
-        std::vector<OrderNode*> overflow_orders;
-        std::unordered_map<OrderNode*, size_t> order_positions;
-        std::atomic<bool> needs_compaction{false};
-        std::atomic<uint32_t> overflow_count{0};
-        
-        PriceLevel() {
-            overflow_orders.reserve(1024);
-        }
-        
-        bool add_order(OrderNode* node) noexcept {
-            DEEP_PROFILE_FUNCTION();
-            
-            // Try to add to hot window first
-            uint32_t slot = hot_count.load(std::memory_order_acquire);
-            if (slot < 32) {
-                if (hot_count.compare_exchange_strong(slot, slot + 1, std::memory_order_acq_rel)) {
-                    orders[slot] = node;
-                    quantities[slot] = node->hot.qty;
-                    order_count.fetch_add(1, std::memory_order_relaxed);
-                    total_qty.fetch_add(node->hot.qty, std::memory_order_relaxed);
-                    return true;
-                }
-            }
-            
-            // Fallback to overflow storage
-            overflow_orders.push_back(node);
-            order_positions[node] = overflow_orders.size() - 1;
-            overflow_count.fetch_add(1, std::memory_order_relaxed);
-            order_count.fetch_add(1, std::memory_order_relaxed);
-            total_qty.fetch_add(node->hot.qty, std::memory_order_relaxed);
-            return true;
-        }
-        
-        void remove_order(OrderNode* node) noexcept {
-            DEEP_PROFILE_FUNCTION();
-            
-            // Check hot window first
-            uint32_t count = hot_count.load(std::memory_order_acquire);
-            for (uint32_t i = 0; i < count; ++i) {
-                if (orders[i] == node) {
-                    orders[i] = orders[count - 1];
-                    quantities[i] = quantities[count - 1];
-                    orders[count - 1] = nullptr;
-                    quantities[count - 1] = 0;
-                    hot_count.store(count - 1, std::memory_order_release);
-                    
-                    order_count.fetch_sub(1, std::memory_order_relaxed);
-                    total_qty.fetch_sub(node->hot.qty, std::memory_order_relaxed);
-                    return;
-                }
-            }
-            
-            // Check overflow storage
-            auto pos_it = order_positions.find(node);
-            if (pos_it != order_positions.end()) {
-                size_t pos = pos_it->second;
-                order_positions.erase(pos_it);
-                
-                if (pos < overflow_orders.size() && overflow_orders[pos] == node) {
-                    overflow_orders[pos] = nullptr;
-                    overflow_count.fetch_sub(1, std::memory_order_relaxed);
-                    needs_compaction.store(true, std::memory_order_relaxed);
-                }
-                
-                order_count.fetch_sub(1, std::memory_order_relaxed);
-                total_qty.fetch_sub(node->hot.qty, std::memory_order_relaxed);
-            }
-        }
-        
-        void compact_if_needed() noexcept {
-            if (!needs_compaction.load(std::memory_order_relaxed)) return;
-            
-            auto new_end = std::remove(overflow_orders.begin(), overflow_orders.end(), nullptr);
-            overflow_orders.erase(new_end, overflow_orders.end());
-            
-            order_positions.clear();
-            for (size_t i = 0; i < overflow_orders.size(); ++i) {
-                if (overflow_orders[i]) {
-                    order_positions[overflow_orders[i]] = i;
-                }
-            }
-            
-            needs_compaction.store(false, std::memory_order_relaxed);
-        }
-        
-        // SIMD-optimized matching against the hot window
-        FORCE_INLINE uint32_t match_hot_orders(Quantity incoming_qty,
-                                               uint32_t out_indices[16],
-                                               Quantity out_qtys[16]) noexcept {
-            const uint32_t count = hot_count.load(std::memory_order_acquire);
-            if (count == 0) return 0;
-            
-            SimdMatchResult result = match_orders_simd(
-                const_cast<const OrderNode* const*>(orders.data()),
-                quantities.data(),
-                count,
-                incoming_qty
-            );
-            
-            for (uint32_t i = 0; i < result.count; ++i) {
-                out_indices[i] = result.indices[i];
-                out_qtys[i] = result.qtys[i];
-            }
-            
-            return result.count;
-        }
-    };
+    // PriceLevel moved to hft/matching_engine_types.h
 
-    // =============================================================================
-    // COMMAND STRUCTURES
-    // =============================================================================
-
-    // Use command definitions from include/hft/command.h; avoid redefinition here
-    // (Kept for historical reference)
-    // enum class CommandType : uint8_t { NEW_ORDER, CANCEL_ORDER, FLUSH_BOOK };
-    // struct Command { CommandType type; union { OrderNode *node; OrderId order_id; }; };
-
-    // =============================================================================
-    // ORDER BOOK
-    // =============================================================================
-
-    class OrderBook {
-    public:
-        OrderBook(IndexPool &pool, Price min_price, Price max_price, Price tick_size)
-            : min_price_(min_price),
-              tick_size_(tick_size),
-              price_levels_(static_cast<size_t>((max_price - min_price) / tick_size) + 1),
-              bids_(price_levels_),
-              asks_(price_levels_),
-              bid_tracker_(price_levels_),
-              ask_tracker_(price_levels_),
-              pool_(pool) {
-            
-            for (size_t i = 0; i < price_levels_; ++i) {
-                Price level_price = min_price + static_cast<Price>(i) * tick_size_;
-                bids_[i].price.store(level_price, std::memory_order_relaxed);
-                asks_[i].price.store(level_price, std::memory_order_relaxed);
-            }
-            bids_tree_.init(price_levels_);
-            asks_tree_.init(price_levels_);
-        }
-        
-        void process_command(MatchingEngine* engine, OrderNode* node, bool is_cancel);
-        
-        void periodic_maintenance() noexcept {
-            for (auto& level : bids_) {
-                level.compact_if_needed();
-            }
-            for (auto& level : asks_) {
-                level.compact_if_needed();
-            }
-        }
-        
-        inline Price get_best_bid() const noexcept {
-            return bid_tracker_.get_best_price();
-        }
-        
-        inline Price get_best_ask() const noexcept {
-            return ask_tracker_.get_best_price();
-        }
-        
-    private:
-        // New: segment trees to jump to first non-empty level
-        SegmentTree bids_tree_;
-        SegmentTree asks_tree_;
-
-        void match_order(MatchingEngine* engine, OrderNode* node);
-        
-        void add_limit_order(MatchingEngine* engine, OrderNode* node);
-        
-        void remove_order(MatchingEngine* engine, OrderNode* node, bool was_cancelled);
-        
-        void update_best_prices() noexcept {
-            // Price trackers maintain best prices automatically via segment tree
-        }
-        
-        void match_simd(MatchingEngine* engine, OrderNode* node, PriceLevel& level);
-        
-        size_t price_to_level(Price price) const noexcept {
-            return static_cast<size_t>((price - min_price_) / tick_size_);
-        }
-        
-        const Price min_price_;
-        const Price tick_size_;
-        const size_t price_levels_;
-        std::vector<PriceLevel> bids_;
-        std::vector<PriceLevel> asks_;
-        
-        BidTracker bid_tracker_;
-        AskTracker ask_tracker_;
-        
-        IndexPool& pool_;
-    };
+    // OrderBook moved to hft/order_book.h
 
     // =============================================================================
     // SHARDED MATCHING ENGINE
@@ -782,7 +230,6 @@ namespace hft {
         int32_t free_top_{0};
     };
 
-    // Forward declaration for Shard
     class MatchingEngine;
 
     // Shard structure - owns all per-shard resources
@@ -1115,13 +562,7 @@ namespace hft {
         o.user_id = node->cold.user_id;
         return o;
     }
-
-    // High-resolution timestamp function is provided in types.h (now_ns)
-
-    // =============================
-    // Implementations
-    // =============================
-
+    
     inline void OrderBook::match_order(MatchingEngine* engine, OrderNode* node) {
         DEEP_PROFILE_FUNCTION();
         if (!node || node->hot.qty <= 0) return;
@@ -1277,11 +718,9 @@ namespace hft {
         }
     }
 
-    // Minimal MatchingEngine method implementations
     inline MatchingEngine::MatchingEngine(RiskManager &rm, Logger &log, size_t pool_capacity)
         : rm_(rm), log_(log)
     {
-        // Initialize single shard inline for single-threaded benchmark compatibility
         shards_.emplace_back(std::make_unique<Shard>(pool_capacity, 0, 1000000, 1));
     }
 
@@ -1293,7 +732,6 @@ namespace hft {
 
     inline void MatchingEngine::stop() {
         running_.store(false, std::memory_order_relaxed);
-        // no worker thread in single-threaded benchmark path
     }
 
     inline bool MatchingEngine::submit_order(Order &&o) {
