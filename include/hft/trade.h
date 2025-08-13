@@ -16,4 +16,4 @@ namespace hft {
         Trade(OrderId buy_id, OrderId sell_id, Symbol sym, Quantity q, Price p)
             : buy_order_id(buy_id), sell_order_id(sell_id), symbol(sym), qty(q), price(p), timestamp(now_ns()) {}
     };
-}
+};
