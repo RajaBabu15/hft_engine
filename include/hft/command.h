@@ -1,22 +1,46 @@
 #pragma once
-#include "common.h"
-#include <cstdint>
-#include <string>
+
+#include "hft/types.h"
+#include "hft/order.h"
 #include <vector>
 
 namespace hft {
-    enum class CommandType { MARKET_DATA };
+    enum class CommandType : uint8_t {
+        NEW_ORDER,
+        CANCEL_ORDER,
+        MARKET_DATA
+    };
 
     struct Level {
         Price price;
-        Quantity quantity;
+        Quantity qty;
     };
 
-    // Padded to a cache line to prevent false sharing
-    struct alignas(64) Command {
+    struct Command {
         CommandType type;
-        uint64_t timestamp_ns;
-        std::vector<Level> bids;
-        std::vector<Level> asks;
+
+        hft::Order order;        
+        OrderId order_id;
+        
+        Timestamp ts;
+        std::vector<Level> bids_;
+        std::vector<Level> asks_;
+        
+        // Constructors
+        Command() = default;
+        
+        static Command make_new_order(hft::Order &&o) {
+            Command c;
+            c.type = CommandType::NEW_ORDER;
+            c.order = std::move(o);
+            return c;
+        }
+        
+        static Command make_cancel(OrderId id) {
+            Command c;
+            c.type = CommandType::CANCEL_ORDER;
+            c.order_id = id;
+            return c;
+        }
     };
 }

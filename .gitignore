@@ -1,9 +1,0 @@
-# Build files
-build/
-bin/
-
-# IDE files
-.vscode/
-
-# Dependencies
-external/
