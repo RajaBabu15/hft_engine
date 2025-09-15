@@ -1,0 +1,36 @@
+# Build artifacts
+*.o
+*.obj
+*.so
+*.dylib
+*.exe
+hft_engine
+network_example
+backtest_runner
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Redis
+dump.rdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+/tmp/
+*.tmp
+*.log
