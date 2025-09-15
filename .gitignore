@@ -1,0 +1,25 @@
+# Compiled binaries
+main
+main_new
+hft_enhanced
+simple_demo
+component_test
+
+# Sample data files
+sample_ticks.csv
+*.csv
+*.bin
+
+# Build artifacts
+*.o
+*.so
+*.a
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
