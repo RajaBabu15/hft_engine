@@ -88,7 +88,8 @@ namespace hft {
         }
 
         Logger(const std::string& file_path)
-            : file_stream_(file_path, std::ios::app), out_(&file_stream_), stop_flag_(false) {
+            : out_(nullptr), file_stream_(file_path, std::ios::app), stop_flag_(false) {
+            out_ = &file_stream_;
             start();
         }
 
@@ -119,7 +120,7 @@ namespace hft {
         }
 
         // Specialized logging methods for matching engine
-        void log_trade(const Trade& trade) {
+        void log_trade(const Trade& /* trade */) {
             info("TRADE: Trade executed");
         }
 

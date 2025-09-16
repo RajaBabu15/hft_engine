@@ -31,7 +31,7 @@ namespace hft {
             std::vector<PriceLevel> asks_;
             BidTracker bid_tracker_;
             AskTracker ask_tracker_;
-            SingleConsumerPool& pool_;
+            [[maybe_unused]] SingleConsumerPool& pool_;
             SegmentTree bids_tree_;
             SegmentTree asks_tree_;
 
@@ -47,7 +47,7 @@ namespace hft {
                 size_t L = 0, R = price_levels_ - 1;
                 if (is_buy) {
                     Price best_ask = get_best_ask();
-                    if (best_ask == UINT64_MAX) return trades; // no asks
+                    if (best_ask == static_cast<Price>(UINT64_MAX)) return trades; // no asks
                     if (node->hot.price < best_ask) return trades; // cannot cross
                     L = static_cast<size_t>((best_ask - min_price_) / tick_size_);
                     R = static_cast<size_t>((node->hot.price - min_price_) / tick_size_);
@@ -117,7 +117,7 @@ namespace hft {
                 update_best_prices();
             }
 
-            void remove_order(OrderNode* node, bool was_cancelled) {
+            void remove_order(OrderNode* node, bool /* was_cancelled */) {
                 DEEP_PROFILE_FUNCTION();
                 if (!node) return;
                 bool is_buy = (node->hot.side == Side::BUY);

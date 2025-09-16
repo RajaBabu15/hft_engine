@@ -44,7 +44,7 @@ namespace hft {
             #endif
         }
 
-        inline void* platform_alloc(size_t bytes, size_t align = 64, bool try_large_page = false) {
+        inline void* platform_alloc(size_t bytes, size_t align = 64, bool /* try_large_page */ = false) {
             if (bytes == 0) return nullptr;
 
             #if defined(_WIN32)
@@ -107,7 +107,7 @@ namespace hft {
             std::vector<uint32_t> free_indices_;
             int32_t free_top_{0};
 
-            bool used_numa_{false};
+            [[maybe_unused]] bool used_numa_{false};
             bool used_platform_alloc_{false};
 
         public:

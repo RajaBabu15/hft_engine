@@ -199,7 +199,9 @@ namespace hft {
                 #endif
 
                 size_t L = l + n_, R = r + n_;
+                #if defined(HFT_ENABLE_MICRO_OPTS)
                 const size_t tsz = t_.size();
+                #endif
                 while (L <= R) {
                     if (L & 1) {
                         #if defined(HFT_ENABLE_MICRO_OPTS)
@@ -248,6 +250,8 @@ namespace hft {
                         const size_t tsz = t_.size();
                         if (HFT_LIKELY(leftNode < tsz)) HFT_PREFETCH(&tree[leftNode]);
                         if (HFT_LIKELY((leftNode | 1u) < tsz)) HFT_PREFETCH(&tree[leftNode | 1u]);
+                    #else
+                        (void)leftNode; // Suppress unused warning
                     #endif
 
                     const bool left_intersects = !(r < nl || l > mid);      
