@@ -75,7 +75,7 @@ public:
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(resting), new_rest);
         #else
             // Fallback scalar implementation
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 8; i++) {
                 matched[i] = std::min(incoming[i], resting[i]);
                 resting[i] -= matched[i];
             }
