@@ -32,6 +32,14 @@ A high-performance, low-latency trading engine written in C++ with Python bindin
 - Execution Reporting: Comprehensive trade execution tracking
 - Market Making: Automated bid/ask quote placement
 
+### Real Market Data Integration
+- Yahoo Finance Integration: Automatic download of real market data using yfinance
+- Smart Caching: Local data storage with automatic cache management
+- Multi-Symbol Support: Simultaneous processing of multiple securities
+- Multiple Timeframes: Support for 1m, 5m, 1h, daily intervals
+- Tick Generation: Conversion of OHLCV bars to synthetic tick data
+- Performance Analytics: Real-time latency and throughput monitoring
+
 ### Performance & Monitoring
 - Latency Analytics: P50, P90, P99 latency percentiles
 - Throughput Testing: Automated performance benchmarking
@@ -71,33 +79,46 @@ cd hft_engine
 pip install -e .
 ```
 
-### Python Usage Example
+### Real Market Data Demo
 
-```python
-import hft_engine_cpp as hft
-import time
+Run the comprehensive demo with real market data from Yahoo Finance:
 
-# Create order book
-book = hft.OrderBook("AAPL")
+```bash
+# Run complete demo with all modes
+python real_data_demo.py
 
-# Create and add orders
-buy_order = hft.Order(1, "AAPL", hft.Side.BUY, hft.OrderType.LIMIT, 150.00, 100)
-sell_order = hft.Order(2, "AAPL", hft.Side.SELL, hft.OrderType.LIMIT, 151.00, 100)
+# Single symbol demo
+python real_data_demo.py --mode single --symbol AAPL --strategy market_making
 
-book.add_order(buy_order)
-book.add_order(sell_order)
+# Multi-symbol demo
+python real_data_demo.py --mode multi --strategy mixed
 
-# Get market data
-print(f"Best Bid: ${book.get_best_bid():.2f}")
-print(f"Best Ask: ${book.get_best_ask():.2f}")
-print(f"Mid Price: ${book.get_mid_price():.2f}")
+# Realistic trading simulation
+python real_data_demo.py --mode sim
 
-# Test high-performance queue
-queue = hft.LockFreeQueue()
-start = time.perf_counter()
-for i in range(10000):
-    queue.push(i)
-print(f"Pushed 10K items in {(time.perf_counter()-start)*1000:.2f} ms")
+# Save results to file
+python real_data_demo.py --save
+```
+
+**Example Output:**
+```
+🚀 HFT ENGINE - REAL MARKET DATA DEMO 🚀
+Using real market data from Yahoo Finance
+Processing through C++ HFT engine via Python bindings
+
+📊 Loaded 390 records for AAPL
+   Price range: $236.32 - $241.22
+   Volatility: 0.06%
+
+🚀 Processing 489 ticks with market_making strategy
+✅ Processed 489 ticks in 0.003s
+   Throughput: 194,475 ticks/sec
+   Orders Generated: 978
+
+⚡ ENGINE PERFORMANCE:
+   Avg Latency: 4.6 μs
+   P99 Latency: 8.1 μs
+   Total Value: $23,401,803.22
 ```
 
 ## Building from Source
@@ -107,6 +128,7 @@ print(f"Pushed 10K items in {(time.perf_counter()-start)*1000:.2f} ms")
 - **C++17** compatible compiler (GCC 8+, Clang 8+, or MSVC 2019+)
 - **Python 3.8+** with pybind11 (`pip install pybind11`)
 - **pthread** library (usually included with most systems)
+- **Python packages**: `yfinance`, `pandas`, `numpy` (auto-installed with pip install)
 
 ### Build Instructions
 
@@ -150,8 +172,8 @@ print(f"Pushed 10K items in {(time.perf_counter()-start)*1000:.2f} ms")
    # Or use the convenient target from build directory
    cd build && make run
    
-   # Run Python example (after installing Python module with pip install -e .)
-   python example.py
+   # Run real market data demo (after installing Python module with pip install -e .)
+   python real_data_demo.py
    ```
 
 ### Optimization Flags
@@ -345,24 +367,27 @@ momentum_threshold=0.001
 ### Project Structure
 ```
 hft_engine/
-├── src/                    # C++ source code
-│   ├── core/               # Core engine components
-│   ├── order/              # Order management
-│   ├── main.cpp            # C++ main executable
-│   └── python_bindings.cpp # pybind11 bindings
-├── include/               # C++ header files
-│   ├── hft/core/           # Core headers
-│   └── hft/order/          # Order headers
-├── python/                # Python package
-│   └── __init__.py         # Python package init
-├── example.py             # Simple Python usage example
-├── build/                 # Build artifacts (ignored)
-├── dist/                  # Wheel distributions (ignored)
-├── CMakeLists.txt         # C++ build configuration
-├── setup.py               # Python build configuration
-├── pyproject.toml         # Modern Python packaging
-├── .gitignore             # Git ignore rules
-└── README.md             # This file
+├── src/                      # C++ source code
+│   ├── core/                 # Core engine components
+│   ├── order/                # Order management
+│   ├── main.cpp              # C++ main executable
+│   └── python_bindings.cpp   # pybind11 bindings
+├── include/                 # C++ header files
+│   ├── hft/core/             # Core headers
+│   └── hft/order/            # Order headers
+├── python/                  # Python package
+│   └── __init__.py           # Python package init
+├── data/                    # Market data cache
+├── real_data_demo.py        # Real market data demo
+├── market_data_loader.py    # Yahoo Finance data loader
+├── market_processor.py      # Market data processor
+├── build/                   # Build artifacts (ignored)
+├── dist/                    # Wheel distributions (ignored)
+├── CMakeLists.txt           # C++ build configuration
+├── setup.py                 # Python build configuration
+├── pyproject.toml           # Modern Python packaging
+├── .gitignore               # Git ignore rules
+└── README.md               # This file
 ```
 
 ### Key Classes
@@ -426,11 +451,20 @@ python -c "import hft_engine_cpp; print(f'Version: {hft_engine_cpp.__version__}'
 
 ## Testing & Benchmarking
 
-### Python Performance Tests
+### Real Market Data Testing
 
 ```bash
-# Run basic Python example
-python example.py
+# Run comprehensive real data demo
+python real_data_demo.py
+
+# Test single symbol performance
+python real_data_demo.py --mode single --symbol TSLA
+
+# Test multi-symbol processing
+python real_data_demo.py --mode multi --strategy momentum
+
+# Run realistic trading simulation
+python real_data_demo.py --mode sim --save
 ```
 
 ### C++ Benchmarks
