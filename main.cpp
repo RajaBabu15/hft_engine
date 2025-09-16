@@ -3,6 +3,10 @@
 #include "hft/order.h"
 #include "hft/matching_engine.h"
 #include "hft/deep_profiler.h"
+#include "hft/ultra_profiler.h"
+#include "hft/bench_tsc.h"
+#include "hft/memory_analyzer.h"
+#include "hft/micro_benchmark.h"
 #include <iostream>
 #include <chrono>
 #include <random>
@@ -13,6 +17,22 @@ using namespace hft;
 int main(){
     // Redirect Redis output to suppress messages
     std::ios_base::sync_with_stdio(false);
+    
+    // Initialize TSC timing for microsecond-level precision
+    std::cout << "Initializing TSC timing system..." << std::endl;
+    if (!hft::calibrate_tsc(100)) {
+        std::cout << "Warning: TSC calibration failed, falling back to steady_clock" << std::endl;
+    } else {
+        std::cout << "TSC calibrated successfully for ultra-low latency timing" << std::endl;
+    }
+    
+    // Run bench_tsc to analyze timing system performance
+    std::cout << "\n=== TIMING SYSTEM BENCHMARKS ===" << std::endl;
+    hft::bench::Config bench_config;
+    bench_config.samples = 10000;
+    bench_config.warmup = 1000;
+    bench_config.duration_ms = 50;
+    auto bench_output = hft::bench::run(bench_config);
     
     Logger log;
     RiskManager rm(100, 10'000'000'000ULL, 50'000'000ULL);
@@ -116,6 +136,21 @@ int main(){
               << (throughput >= 100000 ? "✓ 100k+ req " : "✗ 100k+ req ")
               << (latency <= 10.0 ? "✓ μs latency " : "✗ μs latency ")
               << (success_rate >= 95.0 ? "✓ reliability" : "✗ reliability") << std::endl;
+    
+    // Display ultra profiler report for microsecond-level analysis
+    std::cout << "\n=== MICROSECOND-LEVEL PROFILING RESULTS ===" << std::endl;
+    hft::UltraProfiler::instance().print_report();
+    
+    // Display detailed DeepProfiler report
+    std::cout << "\n=== DETAILED PROFILING ANALYSIS ===" << std::endl;
+    std::cout << hft::DeepProfiler::instance().generate_detailed_report() << std::endl;
+    
+    // Memory and cache analysis
+    hft::MemoryAnalyzer::analyze_memory_layout();
+    hft::MemoryAnalyzer::analyze_data_structure_alignment();
+    
+    // Run micro-benchmarks for critical operations
+    hft::MicroBenchmark::run_critical_path_benchmarks();
     
     return 0;
 }

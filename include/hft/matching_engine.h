@@ -9,7 +9,7 @@
 #include "hft/hot_order_view.h"
 #include "hft/risk_manager.h"
 #include "hft/logger.h"
-#include "hft/deep_profiler.h"
+#include "hft/ultra_profiler.h"
 #include "hft/segment_tree.h"
 #include "hft/epoch_manager.h"
 #include "hft/order_node.h"
@@ -65,13 +65,17 @@ namespace hft {
 
             // All MatchingEngine helpers implemented inline in the class
             size_t process_shard_once(Shard &shard) {
+                ULTRA_PROFILE_FUNCTION();
                 DEEP_PROFILE_FUNCTION();
+                
                 std::array<hft::Command, BATCH_SIZE> batch;
                 size_t count = shard.queue.template dequeue_bulk<BATCH_SIZE>(batch);
 
                 if (count == 0) return 0;
 
                 for (size_t i = 0; i < count; ++i) {
+                    ULTRA_PROFILE_CRITICAL(command_processing_loop);
+                    
                     const auto &cmd = batch[i];
 
                     // Prefetch next command
@@ -97,32 +101,62 @@ namespace hft {
             }
 
             void process_new_order_fast(Shard &shard, const Order &order) {
+                ULTRA_PROFILE_FUNCTION();
                 DEEP_PROFILE_FUNCTION();
-                auto start_time = now_ns();
+                
+                uint64_t start_tsc;
+                #if defined(__x86_64__) || defined(_M_X64)
+                    #ifdef __rdtscp
+                        unsigned aux;
+                        start_tsc = __rdtscp(&aux);
+                    #else
+                        start_tsc = __rdtsc();
+                    #endif
+                #endif
 
-                if (UNLIKELY(latency_controller_.should_throttle())) {
-                    on_reject(order.id, "Throttled");
-                    return;
+                {
+                    ULTRA_PROFILE_CRITICAL(throttle_check);
+                    if (UNLIKELY(latency_controller_.should_throttle())) {
+                        on_reject(order.id, "Throttled");
+                        return;
+                    }
                 }
 
-                OrderNode *node = shard.pool.acquire();
-                if (UNLIKELY(!node)) {
-                    on_reject(order.id, "No capacity");
-                    return;
+                OrderNode *node;
+                {
+                    ULTRA_PROFILE_CRITICAL(pool_acquire);
+                    node = shard.pool.acquire();
+                    if (UNLIKELY(!node)) {
+                        on_reject(order.id, "No capacity");
+                        return;
+                    }
                 }
 
-                init_node_from_order(node, order, shard);
-
-                if (UNLIKELY(!rm_.validate(order))) {
-                    on_reject(order.id, "Risk check failed");
-                    shard.pool.release(node);
-                    return;
+                {
+                    ULTRA_PROFILE_CRITICAL(node_init);
+                    init_node_from_order(node, order, shard);
                 }
 
-                auto result = shard.order_book.process_command(node, false);
+                {
+                    ULTRA_PROFILE_CRITICAL(risk_validation);
+                    if (UNLIKELY(!rm_.validate(order))) {
+                        on_reject(order.id, "Risk check failed");
+                        shard.pool.release(node);
+                        return;
+                    }
+                }
 
-                for (const auto& trade : result.trades) {
-                    on_trade(Order(), Order(), trade.price, trade.qty);
+                OrderBookResult result;
+                {
+                    ULTRA_PROFILE_CRITICAL(orderbook_process);
+                    result = shard.order_book.process_command(node, false);
+                }
+
+                {
+                    ULTRA_PROFILE_CRITICAL(trade_processing);
+                    for (const auto& trade : result.trades) {
+                        on_trade(Order(), Order(), trade.price, trade.qty);
+                    }
                 }
 
                 if (result.status == OrderBookResultStatus::Accepted) {
@@ -133,11 +167,30 @@ namespace hft {
                     on_accept(order);
                 }
 
-                latency_controller_.record_latency(now_ns() - start_time);
+                #if defined(__x86_64__) || defined(_M_X64)
+                    #ifdef __rdtscp
+                        uint64_t end_tsc = __rdtscp(&aux);
+                    #else
+                        uint64_t end_tsc = __rdtsc();
+                    #endif
+                    uint64_t latency_tsc = (end_tsc >= start_tsc) ? (end_tsc - start_tsc) : 0;
+                    
+                    // Convert TSC to nanoseconds for latency controller
+                    auto& state = get_tsc_state();
+                    double scale = state.ns_per_tick.load(std::memory_order_relaxed);
+                    uint64_t latency_ns = (scale > 0.0) ? static_cast<uint64_t>(latency_tsc * scale) : now_ns() - now_ns();
+                    
+                    latency_controller_.record_latency(latency_ns);
+                #else
+                    // Fallback for non-x86
+                    latency_controller_.record_latency(now_ns() - now_ns());
+                #endif
+                
                 on_book_update(order.symbol, shard.order_book.get_best_bid(), shard.order_book.get_best_ask());
             }
 
             void process_cancel_fast(Shard &shard, OrderId external_id) {
+                ULTRA_PROFILE_FUNCTION();
                 DEEP_PROFILE_FUNCTION();
 
                 uint32_t index = shard.extract_index_from_external_id(external_id);
@@ -148,10 +201,14 @@ namespace hft {
                     return;
                 }
 
-                uint64_t packed = shard.order_id_map[index].load(std::memory_order_acquire);
-                if (UNLIKELY(packed == 0)) {
-                    on_reject(external_id, "Order not found");
-                    return;
+                uint64_t packed;
+                {
+                    ULTRA_PROFILE_CRITICAL(order_lookup);
+                    packed = shard.order_id_map[index].load(std::memory_order_acquire);
+                    if (UNLIKELY(packed == 0)) {
+                        on_reject(external_id, "Order not found");
+                        return;
+                    }
                 }
 
                 uint32_t stored_generation = static_cast<uint32_t>(packed >> 32);
@@ -163,23 +220,53 @@ namespace hft {
                 }
 
                 uint32_t stored_index = stored_index_plus1 - 1u;
-                OrderNode *node = shard.pool.get_node(stored_index);
+                OrderNode *node;
+                {
+                    ULTRA_PROFILE_CRITICAL(node_retrieval);
+                    node = shard.pool.get_node(stored_index);
 
-                if (UNLIKELY(!node || node->generation != stored_generation)) {
-                    on_reject(external_id, "Order not present");
-                    return;
+                    if (UNLIKELY(!node || node->generation != stored_generation)) {
+                        on_reject(external_id, "Order not present");
+                        return;
+                    }
                 }
 
-                shard.order_book.process_command(node, true);
+                {
+                    ULTRA_PROFILE_CRITICAL(cancel_orderbook);
+                    shard.order_book.process_command(node, true);
+                }
+                
                 on_book_update(node->hot.symbol, shard.order_book.get_best_bid(), shard.order_book.get_best_ask());
             }
 
             void init_node_from_order(OrderNode *node, const Order &order, const Shard &shard) noexcept {
+                ULTRA_PROFILE_CRITICAL(node_initialization);
+                
                 node->hot.id = shard.make_external_order_id(node->index, node->generation);
                 node->hot.price = order.price;
                 node->hot.qty = order.qty;
                 node->hot.filled = 0;
-                node->hot.timestamp = now_ns();
+                
+                // Use direct TSC for timestamp to avoid function call overhead
+                #if defined(__x86_64__) || defined(_M_X64)
+                    #ifdef __rdtscp
+                        unsigned aux;
+                        uint64_t tsc = __rdtscp(&aux);
+                    #else
+                        uint64_t tsc = __rdtsc();
+                    #endif
+                    auto& state = get_tsc_state();
+                    double scale = state.ns_per_tick.load(std::memory_order_relaxed);
+                    if (scale > 0.0) {
+                        int64_t offset = state.offset_ns.load(std::memory_order_relaxed);
+                        node->hot.timestamp = static_cast<Timestamp>(static_cast<double>(tsc) * scale + static_cast<double>(offset));
+                    } else {
+                        node->hot.timestamp = now_ns();
+                    }
+                #else
+                    node->hot.timestamp = now_ns();
+                #endif
+                
                 node->hot.symbol = order.symbol;
                 node->hot.status = OrderStatus::NEW;
                 node->hot.side = order.side;
