@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
-Simple HFT Engine Example
+HFT Engine Example
 Demonstrates basic usage of the Python bindings
 """
 
 import hft_engine_cpp as hft
 import time
 
-def main():
-    """Basic example of using the HFT engine from Python"""
-    print("=== HFT Engine Python Example ===")
-    print(f"Version: {hft.__version__}")
-    
+def basic_order_book_example():
+    """Basic example of using the order book"""
     # Create order book
     book = hft.OrderBook("AAPL")
     
@@ -22,17 +19,23 @@ def main():
     book.add_order(buy_order)
     book.add_order(sell_order)
     
-    # Display market data
-    print(f"Best Bid: ${book.get_best_bid():.2f}")
-    print(f"Best Ask: ${book.get_best_ask():.2f}")
-    print(f"Mid Price: ${book.get_mid_price():.2f}")
+    # Get market data
+    best_bid = book.get_best_bid()
+    best_ask = book.get_best_ask()
+    mid_price = book.get_mid_price()
     
-    # Test lock-free queue performance
-    print("\n=== Performance Test ===")
+    return {
+        'best_bid': best_bid,
+        'best_ask': best_ask,
+        'mid_price': mid_price
+    }
+
+def performance_test(num_items=10000):
+    """Test lock-free queue performance"""
     queue = hft.LockFreeQueue()
     
     start = time.perf_counter()
-    for i in range(10000):
+    for i in range(num_items):
         queue.push(i)
     
     count = 0
@@ -41,10 +44,24 @@ def main():
             count += 1
     
     elapsed_ms = (time.perf_counter() - start) * 1000
-    print(f"Processed {count} items in {elapsed_ms:.2f} ms")
-    print(f"Throughput: {count / (elapsed_ms / 1000):.0f} ops/sec")
+    throughput = count / (elapsed_ms / 1000) if elapsed_ms > 0 else 0
     
-    print("\n✅ Example completed successfully!")
+    return {
+        'items_processed': count,
+        'elapsed_ms': elapsed_ms,
+        'throughput_ops_per_sec': throughput
+    }
+
+def main():
+    """Run examples"""
+    # Order book example
+    market_data = basic_order_book_example()
+    print(f"Market Data - Bid: ${market_data['best_bid']:.2f}, Ask: ${market_data['best_ask']:.2f}, Mid: ${market_data['mid_price']:.2f}")
+    
+    # Performance test
+    perf_results = performance_test()
+    print(f"Performance - Processed {perf_results['items_processed']} items in {perf_results['elapsed_ms']:.2f} ms")
+    print(f"Throughput: {perf_results['throughput_ops_per_sec']:.0f} ops/sec")
 
 if __name__ == "__main__":
     main()

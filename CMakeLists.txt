@@ -83,13 +83,11 @@ add_custom_target(run
 
 # Python demo target (if Python is available)
 if(Python3_FOUND)
-    message(STATUS "Python3 found: ${Python3_EXECUTABLE}")
     add_custom_target(run_python
-        COMMAND ${Python3_EXECUTABLE} -c "print('Python integration would go here')"
-        COMMENT "Running Python integration demo"
+        COMMAND ${Python3_EXECUTABLE} example.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Running Python example"
     )
-else()
-    message(WARNING "Python3 not found - Python integration disabled")
 endif()
 
 # ============================================================================
@@ -104,17 +102,12 @@ install(TARGETS ${PROJECT_NAME}
 # Configuration Summary
 # ============================================================================
 
-message(STATUS "=== Enhanced HFT Trading Engine v${PROJECT_VERSION} ===")
+message(STATUS "HFT Trading Engine v${PROJECT_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}}")
-message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "System: ${CMAKE_SYSTEM_PROCESSOR}")
 
 if(Python3_FOUND)
     message(STATUS "Python support: ON")
-    message(STATUS "Python executable: ${Python3_EXECUTABLE}")
 else()
     message(STATUS "Python support: OFF")
 endif()
-
-message(STATUS "Features: Modular Design, Lock-free Queues, High-precision Timing")

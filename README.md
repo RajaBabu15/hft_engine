@@ -1,42 +1,42 @@
 # HFT Trading Engine v2.0.0
 
-A high-performance, low-latency trading engine written in **C++ with Python bindings** designed for high-frequency trading applications.
+A high-performance, low-latency trading engine written in C++ with Python bindings designed for high-frequency trading applications.
 
-## 🎯 **ENHANCED WITH PRODUCTION-READY PYTHON BINDINGS**
+## Production-Ready Python Bindings
 
-✅ **Real C++ Python bindings using pybind11 (not simulation)**  
-✅ **ALL core components exposed: OrderBook, LockFreeQueue, HighResolutionClock**  
-✅ **Performance: 823K+ orders/sec, sub-microsecond latencies**  
-✅ **Wheel distribution ready for production deployment**  
-✅ **Complete Python package with proper metadata and versioning**
+- Real C++ Python bindings using pybind11 (not simulation)
+- All core components exposed: OrderBook, LockFreeQueue, HighResolutionClock
+- Performance: 823K+ orders/sec, sub-microsecond latencies
+- Wheel distribution ready for production deployment
+- Complete Python package with proper metadata and versioning
 
 ## Features
 
-### 🏗️ **Core Engine Components**
-- **Lock-Free Queues**: Sub-microsecond message passing with zero-copy design
-- **Order Book Management**: Efficient price-time priority order matching
-- **High-Resolution Timing**: Nanosecond precision latency tracking with RDTSC
-- **Price Level Management**: Complete order queue with time priority
-- **Object Pooling**: Memory-efficient allocation with pre-allocated object pools
+### Core Engine Components
+- Lock-Free Queues: Sub-microsecond message passing with zero-copy design
+- Order Book Management: Efficient price-time priority order matching
+- High-Resolution Timing: Nanosecond precision latency tracking with RDTSC
+- Price Level Management: Complete order queue with time priority
+- Object Pooling: Memory-efficient allocation with pre-allocated object pools
 
-### 🐍 **Python Integration** 
-- **Real C++ Bindings**: Production-ready pybind11 integration (not simulation)
-- **Complete API Coverage**: All core classes accessible from Python
-- **Multiple Queue Types**: IntLockFreeQueue, DoubleLockFreeQueue with backward compatibility
-- **Performance Optimized**: 823K+ orders/sec throughput from Python
-- **Wheel Distribution**: Ready for `pip install` deployment
+### Python Integration
+- Real C++ Bindings: Production-ready pybind11 integration (not simulation)
+- Complete API Coverage: All core classes accessible from Python
+- Multiple Queue Types: IntLockFreeQueue, DoubleLockFreeQueue with backward compatibility
+- Performance Optimized: 823K+ orders/sec throughput from Python
+- Wheel Distribution: Ready for pip install deployment
 
-### 📊 **Trading Components**
-- **Order Management**: Complete order lifecycle with status tracking
-- **Market Data Processing**: Real-time tick data with price level aggregation
-- **Execution Reporting**: Comprehensive trade execution tracking
-- **Market Making**: Automated bid/ask quote placement
+### Trading Components
+- Order Management: Complete order lifecycle with status tracking
+- Market Data Processing: Real-time tick data with price level aggregation
+- Execution Reporting: Comprehensive trade execution tracking
+- Market Making: Automated bid/ask quote placement
 
-### ⚡ **Performance & Monitoring**
-- **Latency Analytics**: P50, P90, P99 latency percentiles
-- **Throughput Testing**: Automated performance benchmarking
-- **Build Metadata**: Version tracking with compiler and platform info
-- **Cross-Platform**: macOS, Linux, Windows support
+### Performance & Monitoring
+- Latency Analytics: P50, P90, P99 latency percentiles
+- Throughput Testing: Automated performance benchmarking
+- Build Metadata: Version tracking with compiler and platform info
+- Cross-Platform: macOS, Linux, Windows support
 
 ## Architecture
 
@@ -55,7 +55,7 @@ A high-performance, low-latency trading engine written in **C++ with Python bind
                        └──────────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Python Installation (Recommended)
 
@@ -163,9 +163,9 @@ The project uses aggressive optimization flags in Release mode:
 - `-funroll-loops`: Loop unrolling for better performance
 - `-ffast-math`: Fast floating-point math operations
 
-## 📖 API Documentation
+## API Documentation
 
-### 🐍 Python API
+### Python API
 
 #### Core Classes
 
@@ -262,7 +262,7 @@ for key, value in hft.build_info.items():
     print(f"  {key}: {value}")
 ```
 
-### 🔧 C++ API (Advanced)
+### C++ API (Advanced)
 
 #### Basic Market Making
 
@@ -298,7 +298,7 @@ while (queue.pop(value)) {
 }
 ```
 
-## 📊 Performance Benchmarks
+## Performance Benchmarks
 
 ### Python Bindings Performance (Real C++ Backend)
 
@@ -396,7 +396,7 @@ public:
 };
 ```
 
-## 📦 Distribution & Packaging
+## Distribution & Packaging
 
 ### Python Wheel Distribution
 
@@ -468,7 +468,7 @@ make -j$(sysctl -n hw.ncpu)  # macOS
 - **Rate Limiting**: Implement order rate limits
 - **Audit Logging**: Comprehensive transaction logging
 
-## ⚠️ Known Limitations
+## Known Limitations
 
 ### C++ Core
 - Market data is currently simulated (not connected to real exchanges)
@@ -492,20 +492,20 @@ make -j$(sysctl -n hw.ncpu)  # macOS
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📝 Disclaimer
+## Disclaimer
 
-This software is for **educational and research purposes only**. 
+This software is for educational and research purposes only.
 
-### ⚠️ Production Use Warning
-- Use in production trading environments is **at your own risk**
+### Production Use Warning
+- Use in production trading environments is at your own risk
 - The Python bindings provide access to high-performance C++ components
-- **Real money trading**: Thoroughly test and validate before any live trading
-- **Performance**: While optimized, always benchmark in your specific environment
+- Real money trading: Thoroughly test and validate before any live trading
+- Performance: While optimized, always benchmark in your specific environment
 
-### 🛡️ Liability
+### Liability
 The authors are not responsible for any financial losses incurred through the use of this software. This includes losses from:
 - Trading algorithm bugs or logic errors
-- Performance issues or latency spikes  
+- Performance issues or latency spikes
 - Integration or deployment problems
 - Market data feed issues
 
@@ -515,14 +515,14 @@ For questions or support, please open an issue on GitHub or contact the maintain
 
 ---
 
-**🚀 Performance Notice**: This engine is designed for **ultra-low-latency trading**. 
+Performance Notice: This engine is designed for ultra-low-latency trading.
 
 ### C++ Core
 - Ensure your hardware and OS configuration are optimized for real-time performance
 - Use CPU isolation, NUMA tuning, and kernel bypass networking for production
 
-### Python Bindings  
-- The Python bindings use **real C++ implementation** (not simulation)
+### Python Bindings
+- The Python bindings use real C++ implementation (not simulation)
 - Measured 823K+ orders/sec throughput from Python on ARM64
 - Minimal overhead thanks to pybind11's zero-copy design
 - Consider Python GIL implications for multi-threaded scenarios

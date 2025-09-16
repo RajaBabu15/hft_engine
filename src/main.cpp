@@ -25,21 +25,22 @@ public:
     
     void run() {
         running_ = true;
-        std::cout << "HFT Trading Engine - Refactored Implementation" << std::endl;
-        std::cout << "=============================================" << std::endl << std::endl;
+        std::cout << "HFT Trading Engine v2.0.0" << std::endl;
+        std::cout << "Performance Benchmark Suite" << std::endl;
+        std::cout << "============================" << std::endl;
         
         // Demonstrate core components
         demonstrate_clock();
         demonstrate_lock_free_queue();
         demonstrate_order_book();
         
-        std::cout << "Engine demonstration complete!" << std::endl;
+        std::cout << "Benchmark complete." << std::endl;
         running_ = false;
     }
     
 private:
     void demonstrate_clock() {
-        std::cout << "=== High Resolution Clock Test ===" << std::endl;
+        std::cout << "\nHigh Resolution Clock:" << std::endl;
         auto start = core::HighResolutionClock::now();
         
         // Simulate some work
@@ -48,20 +49,22 @@ private:
         auto end = core::HighResolutionClock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
         
-        std::cout << "Clock precision test: " << duration.count() << " nanoseconds" << std::endl;
-        std::cout << "RDTSC: " << core::HighResolutionClock::rdtsc() << std::endl << std::endl;
+        std::cout << "  Precision: " << duration.count() << " ns" << std::endl;
+        std::cout << "  RDTSC: " << core::HighResolutionClock::rdtsc() << std::endl;
     }
     
     void demonstrate_lock_free_queue() {
-        std::cout << "=== Lock-Free Queue Test ===" << std::endl;
+        std::cout << "\nLock-Free Queue:" << std::endl;
         
         core::LockFreeQueue<int, 1024> queue;
         const int test_items = 1000;
         
         // Producer
+        int produced = 0;
         for (int i = 0; i < test_items; ++i) {
-            if (!queue.push(i)) {
-                std::cout << "Queue full at item " << i << std::endl;
+            if (queue.push(i)) {
+                produced++;
+            } else {
                 break;
             }
         }
@@ -73,11 +76,11 @@ private:
             consumed++;
         }
         
-        std::cout << "Produced and consumed " << consumed << " items" << std::endl << std::endl;
+        std::cout << "  Operations: " << consumed << " items" << std::endl;
     }
     
     void demonstrate_order_book() {
-        std::cout << "=== Order Book Test ===" << std::endl;
+        std::cout << "\nOrder Book:" << std::endl;
         
         order::OrderBook book("AAPL");
         
@@ -88,26 +91,23 @@ private:
         book.add_order(buy_order);
         book.add_order(sell_order);
         
-        std::cout << "Best Bid: " << book.get_best_bid() << std::endl;
-        std::cout << "Best Ask: " << book.get_best_ask() << std::endl;
-        std::cout << "Mid Price: " << book.get_mid_price() << std::endl;
+        std::cout << "  Best Bid: $" << book.get_best_bid() << std::endl;
+        std::cout << "  Best Ask: $" << book.get_best_ask() << std::endl;
+        std::cout << "  Mid Price: $" << book.get_mid_price() << std::endl;
         
         // Test market depth
-        auto bids = book.get_bids(5);
-        auto asks = book.get_asks(5);
+        auto bids = book.get_bids(2);
+        auto asks = book.get_asks(2);
         
-        std::cout << "Market Depth:" << std::endl;
-        std::cout << "Bids: ";
+        std::cout << "  Depth: ";
         for (const auto& bid : bids) {
             std::cout << "[" << bid.first << ":" << bid.second << "] ";
         }
-        std::cout << std::endl;
-        
-        std::cout << "Asks: ";
+        std::cout << "| ";
         for (const auto& ask : asks) {
             std::cout << "[" << ask.first << ":" << ask.second << "] ";
         }
-        std::cout << std::endl << std::endl;
+        std::cout << std::endl;
     }
 };
 
