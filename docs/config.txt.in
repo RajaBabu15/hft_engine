@@ -1,0 +1,30 @@
+# HFT Trading Engine Configuration File
+# Project: @PROJECT_NAME@ v@PROJECT_VERSION@
+
+# Market Data Settings
+market_data_rate=10000
+symbols=AAPL,MSFT,GOOGL,TSLA,NVDA
+
+# Risk Management
+max_position=10000
+max_notional=1000000
+max_order_size=5000
+
+# Market Making Strategy Parameters
+market_making_spread=0.02
+market_making_quote_size=1000
+
+# Momentum Strategy Parameters
+momentum_window=20
+momentum_threshold=0.001
+momentum_order_size=500
+
+# Performance Settings
+thread_affinity=true
+numa_aware=true
+latency_tracking=true
+
+# Logging
+log_level=INFO
+log_file=hft_engine.log
+enable_trade_logging=true
