@@ -153,7 +153,7 @@ namespace hft {
         return ok;
     }
 
-    inline bool calibrate_tsc(unsigned /* duration_ms */) noexcept {
+    inline bool calibrate_tsc(unsigned duration_ms) noexcept {
         #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
             auto& state = get_tsc_state();
             
