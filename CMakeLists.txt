@@ -1,121 +1,120 @@
 cmake_minimum_required(VERSION 3.16)
-project(HftTradingEngine VERSION 2.0.0 LANGUAGES CXX)
+project(hft_engine VERSION 2.0.0 LANGUAGES CXX)
 
-# Enhanced HFT Trading Engine with Python, Redis, Backtesting, and P&L tracking
+# ============================================================================
+# Build Configuration
+# ============================================================================
 
-# Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# Build type
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif()
-
-# Compiler flags for high performance
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3 -Wall -Wextra -Wpedantic -fsanitize=address")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -mtune=native -flto")
-
-# Additional optimization flags for release builds
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -finline-functions -ffast-math")
-endif()
-
-# Platform-specific optimizations
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -mavx -mavx2")
-endif()
 
 # Find required packages
 find_package(Threads REQUIRED)
-
-# Optional: Find Python for bindings
 find_package(Python3 COMPONENTS Interpreter)
-if(Python3_FOUND)
-    message(STATUS "Python3 found: ${Python3_EXECUTABLE}")
-    set(PYTHON_SUPPORT ON)
-else()
-    message(STATUS "Python3 not found - Python bindings will not be available")
-    set(PYTHON_SUPPORT OFF)
+
+# ============================================================================
+# Compiler Flags and Optimizations
+# ============================================================================
+
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops -finline-functions -ffast-math")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -Wall -Wextra")
+
+# Platform specific optimizations
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -mtune=native")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=native")
 endif()
 
-# Include directories
+# ============================================================================
+# Include Directories
+# ============================================================================
+
 include_directories(include)
 
-# Source files
-set(SOURCES
-    src/hft_engine.cpp
+# ============================================================================
+# Source Files
+# ============================================================================
+
+# Core components
+set(CORE_SOURCES
+    src/core/clock.cpp
 )
 
-# Create the main executable
-add_executable(hft_engine ${SOURCES})
-
-# Link libraries
-target_link_libraries(hft_engine 
-    PRIVATE 
-    Threads::Threads
+# Order management
+set(ORDER_SOURCES
+    src/order/order.cpp
+    src/order/price_level.cpp
+    src/order/order_book.cpp
 )
 
-# Set properties for the executable
-set_target_properties(hft_engine PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+# All source files
+set(ALL_SOURCES
+    ${CORE_SOURCES}
+    ${ORDER_SOURCES}
+    src/main.cpp
 )
 
-# Compiler-specific options
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(hft_engine PRIVATE -fno-omit-frame-pointer)
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(hft_engine PRIVATE -fno-omit-frame-pointer)
-endif()
+# ============================================================================
+# Executable Target
+# ============================================================================
 
-# Add custom target for running the application
+add_executable(${PROJECT_NAME} ${ALL_SOURCES})
+
+# ============================================================================
+# Linking
+# ============================================================================
+
+target_link_libraries(${PROJECT_NAME} 
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
+# ============================================================================
+# Custom Targets
+# ============================================================================
+
+# Run target
 add_custom_target(run
-    COMMAND $<TARGET_FILE:hft_engine>
-    DEPENDS hft_engine
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    COMMENT "Running Enhanced HFT Trading Engine with all features"
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}
+    DEPENDS ${PROJECT_NAME}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running HFT Engine"
 )
 
-# Add Python demo target if Python is available
-if(PYTHON_SUPPORT)
+# Python demo target (if Python is available)
+if(Python3_FOUND)
+    message(STATUS "Python3 found: ${Python3_EXECUTABLE}")
     add_custom_target(run_python
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/python/hft_python_bindings.py
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        COMMENT "Running Python HFT Engine Demo"
+        COMMAND ${Python3_EXECUTABLE} -c "print('Python integration would go here')"
+        COMMENT "Running Python integration demo"
     )
+else()
+    message(WARNING "Python3 not found - Python integration disabled")
 endif()
 
-# Performance profiling target
-add_custom_target(profile
-    COMMAND perf record -g $<TARGET_FILE:hft_engine>
-    DEPENDS hft_engine
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    COMMENT "Profiling HFT Trading Engine with perf"
-)
-
+# ============================================================================
 # Installation
-install(TARGETS hft_engine
+# ============================================================================
+
+install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
 )
 
-# Create a config file for easy running
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/docs/config.txt.in"
-    "${CMAKE_BINARY_DIR}/bin/config.txt"
-    @ONLY
-)
+# ============================================================================
+# Configuration Summary
+# ============================================================================
 
-# Print build information
-message(STATUS "=== Enhanced HFT Trading Engine v2.0.0 ===")
+message(STATUS "=== Enhanced HFT Trading Engine v${PROJECT_VERSION} ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS}")
+message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}}")
 message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
-message(STATUS "Python support: ${PYTHON_SUPPORT}")
-if(PYTHON_SUPPORT)
+
+if(Python3_FOUND)
+    message(STATUS "Python support: ON")
     message(STATUS "Python executable: ${Python3_EXECUTABLE}")
+else()
+    message(STATUS "Python support: OFF")
 endif()
-message(STATUS "Features: Redis, P&L tracking, Backtesting, Admission Control, Tick Replay")
+
+message(STATUS "Features: Modular Design, Lock-free Queues, High-precision Timing")

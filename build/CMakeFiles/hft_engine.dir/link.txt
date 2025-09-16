@@ -1,1 +1,0 @@
-/usr/bin/c++  -funroll-loops -finline-functions -ffast-math -O3 -DNDEBUG -march=native -mtune=native -flto -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/hft_engine.dir/src/hft_engine.cpp.o -o bin/hft_engine
