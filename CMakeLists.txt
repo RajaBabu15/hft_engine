@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
-project(HftTradingEngine VERSION 1.0.0 LANGUAGES CXX)
+project(HftTradingEngine VERSION 2.0.0 LANGUAGES CXX)
+
+# Enhanced HFT Trading Engine with Python, Redis, Backtesting, and P&L tracking
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -27,6 +29,16 @@ endif()
 
 # Find required packages
 find_package(Threads REQUIRED)
+
+# Optional: Find Python for bindings
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    message(STATUS "Python3 found: ${Python3_EXECUTABLE}")
+    set(PYTHON_SUPPORT ON)
+else()
+    message(STATUS "Python3 not found - Python bindings will not be available")
+    set(PYTHON_SUPPORT OFF)
+endif()
 
 # Include directories
 include_directories(include)
@@ -64,8 +76,17 @@ add_custom_target(run
     COMMAND $<TARGET_FILE:hft_engine>
     DEPENDS hft_engine
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    COMMENT "Running HFT Trading Engine"
+    COMMENT "Running Enhanced HFT Trading Engine with all features"
 )
+
+# Add Python demo target if Python is available
+if(PYTHON_SUPPORT)
+    add_custom_target(run_python
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/python/hft_python_bindings.py
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        COMMENT "Running Python HFT Engine Demo"
+    )
+endif()
 
 # Performance profiling target
 add_custom_target(profile
@@ -88,7 +109,13 @@ configure_file(
 )
 
 # Print build information
+message(STATUS "=== Enhanced HFT Trading Engine v2.0.0 ===")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "C++ flags: ${CMAKE_CXX_FLAGS}")
 message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "Python support: ${PYTHON_SUPPORT}")
+if(PYTHON_SUPPORT)
+    message(STATUS "Python executable: ${Python3_EXECUTABLE}")
+endif()
+message(STATUS "Features: Redis, P&L tracking, Backtesting, Admission Control, Tick Replay")

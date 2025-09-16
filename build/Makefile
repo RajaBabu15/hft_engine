@@ -188,6 +188,19 @@ run/fast:
 .PHONY : run/fast
 
 #=============================================================================
+# Target rules for targets named run_python
+
+# Build rule for target.
+run_python: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_python
+.PHONY : run_python
+
+# fast build rule for target.
+run_python/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_python.dir/build.make CMakeFiles/run_python.dir/build
+.PHONY : run_python/fast
+
+#=============================================================================
 # Target rules for targets named profile
 
 # Build rule for target.
@@ -238,6 +251,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... profile"
 	@echo "... run"
+	@echo "... run_python"
 	@echo "... hft_engine"
 	@echo "... src/hft_engine.o"
 	@echo "... src/hft_engine.i"

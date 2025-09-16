@@ -1,5 +1,5 @@
 # HFT Trading Engine Configuration File
-# Project: HftTradingEngine v1.0.0
+# Project: HftTradingEngine v2.0.0
 
 # Market Data Settings
 market_data_rate=10000
