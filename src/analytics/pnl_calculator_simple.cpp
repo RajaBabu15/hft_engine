@@ -230,5 +230,77 @@ double calculate_market_impact(Quantity order_size, Quantity average_daily_volum
     double participation_rate = static_cast<double>(order_size) / static_cast<double>(average_daily_volume);
     return std::sqrt(participation_rate) * 100.0;
 }
+SlippageAnalyzer::SlippageAnalyzer(ReferencePrice ref_price_type)
+    : reference_price_type_(ref_price_type) {
+    reset();
+}
+void SlippageAnalyzer::record_trade(const Trade& trade, Price reference_price) {
+    std::lock_guard<std::mutex> lock(trades_mutex_);
+    Trade trade_copy = trade;
+    trade_copy.slippage_bps = calculate_slippage_bps(trade, reference_price);
+    trades_.push_back(trade_copy);
+    update_metrics();
+}
+void SlippageAnalyzer::update_price_history(const Symbol& symbol, Price price) {
+    std::lock_guard<std::mutex> lock(price_history_mutex_);
+    auto now = std::chrono::high_resolution_clock::now();
+    price_history_[symbol].emplace_back(now, price);
+    if (price_history_[symbol].size() > 1000) {
+        price_history_[symbol].erase(price_history_[symbol].begin());
+    }
+}
+SlippageMetrics SlippageAnalyzer::calculate_slippage_metrics() const {
+    std::lock_guard<std::mutex> lock(trades_mutex_);
+    SlippageMetrics result = metrics_;
+    return result;
+}
+void SlippageAnalyzer::reset() {
+    std::lock_guard<std::mutex> lock(trades_mutex_);
+    trades_.clear();
+    metrics_.reset();
+}
+double SlippageAnalyzer::calculate_slippage_bps(const Trade& trade, Price reference_price) const {
+    return hft::analytics::calculate_slippage_bps(trade.executed_price, reference_price, trade.side);
+}
+void SlippageAnalyzer::update_metrics() {
+    if (trades_.empty()) {
+        metrics_.reset();
+        return;
+    }
+    double total_slippage = 0.0;
+    double positive_slippage = 0.0;
+    double negative_slippage = 0.0;
+    double buy_slippage = 0.0;
+    double sell_slippage = 0.0;
+    size_t buy_count = 0, sell_count = 0;
+    for (const auto& trade : trades_) {
+        total_slippage += trade.slippage_bps;
+        if (trade.slippage_bps > 0) {
+            positive_slippage += trade.slippage_bps;
+        } else {
+            negative_slippage += trade.slippage_bps;
+        }
+        if (trade.side == Side::BUY) {
+            buy_slippage += trade.slippage_bps;
+            buy_count++;
+        } else {
+            sell_slippage += trade.slippage_bps;
+            sell_count++;
+        }
+    }
+    metrics_.trade_count = trades_.size();
+    metrics_.total_slippage_bps = total_slippage;
+    metrics_.avg_slippage_bps = total_slippage / trades_.size();
+    metrics_.positive_slippage_bps = positive_slippage;
+    metrics_.negative_slippage_bps = negative_slippage;
+    metrics_.buy_slippage_bps = buy_count > 0 ? buy_slippage / buy_count : 0.0;
+    metrics_.sell_slippage_bps = sell_count > 0 ? sell_slippage / sell_count : 0.0;
+    double variance = 0.0;
+    for (const auto& trade : trades_) {
+        double diff = trade.slippage_bps - metrics_.avg_slippage_bps;
+        variance += diff * diff;
+    }
+    metrics_.slippage_std_dev = std::sqrt(variance / trades_.size());
+}
 }
 }

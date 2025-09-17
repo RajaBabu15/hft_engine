@@ -11,23 +11,15 @@ namespace order {
 class OrderBook {
 private:
     core::Symbol symbol_;
-    
-    // Legacy std::map implementation
     std::map<core::Price, PriceLevel, std::greater<core::Price>> bid_levels_;
     std::map<core::Price, PriceLevel, std::less<core::Price>> ask_levels_;
-    
-    // High-performance segment tree implementation
     std::unique_ptr<core::MemoryOptimizedSegmentTree<PriceLevel>> bid_segment_tree_;
     std::unique_ptr<core::MemoryOptimizedSegmentTree<PriceLevel>> ask_segment_tree_;
-    
     std::unordered_map<core::OrderID, Order> orders_;
     mutable core::Price best_bid_;
     mutable core::Price best_ask_;
     mutable bool best_prices_valid_;
-    
-    // Configuration flag for implementation choice
     bool use_segment_tree_;
-    
     void update_best_prices() const;
     void update_best_prices_segment_tree() const;
 public:

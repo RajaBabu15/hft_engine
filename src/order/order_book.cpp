@@ -17,20 +17,16 @@ void OrderBook::update_best_prices() const {
         best_prices_valid_ = true;
     }
 }
-
 void OrderBook::update_best_prices_segment_tree() const {
     auto best_bid = bid_segment_tree_->get_best_bid();
     auto best_ask = ask_segment_tree_->get_best_ask();
-    
     best_bid_ = best_bid.first;
     best_ask_ = best_ask.first;
     best_prices_valid_ = true;
 }
 bool OrderBook::add_order(const Order& order) {
     orders_[order.id] = order;
-    
     if (use_segment_tree_) {
-        // Segment tree implementation
         if (order.side == core::Side::BUY) {
             auto level_result = bid_segment_tree_->get_price_level(order.price);
             if (level_result.first) {
@@ -55,14 +51,12 @@ bool OrderBook::add_order(const Order& order) {
             }
         }
     } else {
-        // Legacy std::map implementation
         if (order.side == core::Side::BUY) {
             bid_levels_[order.price].add_order(order.id, order.quantity);
         } else {
             ask_levels_[order.price].add_order(order.id, order.quantity);
         }
     }
-    
     best_prices_valid_ = false;
     return true;
 }

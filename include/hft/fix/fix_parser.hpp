@@ -96,8 +96,8 @@ public:
     using MessageCallback = std::function<void(const FixMessage&)>;
     using ErrorCallback = std::function<void(const std::string&, const std::string&)>;
 private:
-    static constexpr size_t PARSER_QUEUE_SIZE = 16384;  // Increased for high throughput
-    static constexpr size_t MAX_WORKER_THREADS = 4;    // Conservative limit to prevent resource exhaustion
+    static constexpr size_t PARSER_QUEUE_SIZE = 16384;
+    static constexpr size_t MAX_WORKER_THREADS = 4;
     std::atomic<bool> running_{false};
     size_t num_worker_threads_;
     std::vector<std::thread> worker_threads_;

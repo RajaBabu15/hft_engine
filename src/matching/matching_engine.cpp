@@ -9,13 +9,11 @@ MatchingEngine::MatchingEngine(MatchingAlgorithm algorithm, const std::string& l
     : algorithm_(algorithm), use_segment_tree_(use_segment_tree)
 {
     incoming_orders_ = std::make_unique<core::LockFreeQueue<order::Order, ORDER_QUEUE_SIZE>>();
-    
     logger_ = std::make_unique<core::AsyncLogger>(log_path, core::LogLevel::INFO);
     logger_->start();
-    
     std::string implementation_type = use_segment_tree_ ? "Segment Tree" : "Legacy";
-    logger_->info("MatchingEngine initialized with algorithm: " + 
-                  std::to_string(static_cast<int>(algorithm)) + 
+    logger_->info("MatchingEngine initialized with algorithm: " +
+                  std::to_string(static_cast<int>(algorithm)) +
                   ", Implementation: " + implementation_type, "ENGINE");
 }
 MatchingEngine::~MatchingEngine() {
@@ -71,7 +69,6 @@ bool MatchingEngine::submit_order(const order::Order& order) {
         std::string side_str = (order.side == core::Side::BUY) ? "BUY" : "SELL";
         logger_->log_order_received(order.id, order.symbol, order.price, order.quantity, side_str);
     }
-
     if (!validate_order(order)) {
         if (error_callback_) {
             error_callback_("VALIDATION_ERROR", "Order failed validation");
@@ -92,10 +89,8 @@ bool MatchingEngine::submit_order(const order::Order& order) {
         stats_.orders_rejected.fetch_add(1);
         return false;
     }
-    // Set submission timestamp for accurate latency measurement
     order::Order order_copy = order;
     order_copy.timestamp = core::HighResolutionClock::now();
-    
     bool enqueued = incoming_orders_->enqueue(std::move(order_copy));
     if (!enqueued && logger_) {
         logger_->warn("Order queue full, order " + std::to_string(order.id) + " dropped", "ENGINE");
@@ -103,9 +98,8 @@ bool MatchingEngine::submit_order(const order::Order& order) {
     return enqueued;
 }
 bool MatchingEngine::cancel_order(core::OrderID order_id) {
-    order::Order cancelled_order_copy; // Declare at function scope
+    order::Order cancelled_order_copy;
     bool found = false;
-    
     if (use_segment_tree_) {
         auto it = segment_tree_orders_.find(order_id);
         if (it == segment_tree_orders_.end()) {
@@ -114,15 +108,13 @@ bool MatchingEngine::cancel_order(core::OrderID order_id) {
             }
             return false;
         }
-        cancelled_order_copy = it->second; // Make a copy before erasing
+        cancelled_order_copy = it->second;
         cancelled_order_copy.status = core::OrderStatus::CANCELLED;
         found = true;
-        
         auto book_it = segment_tree_books_.find(cancelled_order_copy.symbol);
         if (book_it != segment_tree_books_.end()) {
             book_it->second->remove_order(cancelled_order_copy.price, cancelled_order_copy.remaining_quantity(), cancelled_order_copy.side);
         }
-        
         segment_tree_orders_.erase(it);
     } else {
         auto it = active_orders_.find(order_id);
@@ -135,35 +127,28 @@ bool MatchingEngine::cancel_order(core::OrderID order_id) {
         cancelled_order_copy = it->second;
         cancelled_order_copy.status = core::OrderStatus::CANCELLED;
         found = true;
-        
         auto* book = get_order_book(cancelled_order_copy.symbol);
         if (book) {
             book->cancel_order(order_id);
         }
         active_orders_.erase(it);
     }
-    
     if (logger_) {
         logger_->log_order_cancelled(order_id, "User requested");
     }
-    
-    // Create execution report from the cancelled order
     if (!found) {
-        return false; // Should not happen, but safety check
+        return false;
     }
-    
     ExecutionReport report(cancelled_order_copy);
     report.status = core::OrderStatus::CANCELLED;
     if (execution_callback_) {
         execution_callback_(report);
     }
-    
     return true;
 }
 bool MatchingEngine::modify_order(core::OrderID order_id, core::Price new_price, core::Quantity new_quantity) {
     order::Order modified_order;
     bool found = false;
-    
     if (use_segment_tree_) {
         auto it = segment_tree_orders_.find(order_id);
         if (it != segment_tree_orders_.end()) {
@@ -177,16 +162,14 @@ bool MatchingEngine::modify_order(core::OrderID order_id, core::Price new_price,
             found = true;
         }
     }
-    
     if (!found) {
         return false;
     }
-    
     cancel_order(order_id);
     modified_order.id = next_execution_id_.fetch_add(1);
     modified_order.price = new_price;
     modified_order.quantity = new_quantity;
-    modified_order.filled_quantity = 0; // Reset for new order
+    modified_order.filled_quantity = 0;
     modified_order.timestamp = core::HighResolutionClock::now();
     return submit_order(modified_order);
 }
@@ -200,7 +183,6 @@ const order::OrderBook* MatchingEngine::get_order_book(const core::Symbol& symbo
 }
 std::vector<core::Symbol> MatchingEngine::get_symbols() const {
     std::vector<core::Symbol> symbols;
-    
     if (use_segment_tree_) {
         symbols.reserve(segment_tree_books_.size());
         for (const auto& pair : segment_tree_books_) {
@@ -212,7 +194,6 @@ std::vector<core::Symbol> MatchingEngine::get_symbols() const {
             symbols.push_back(pair.first);
         }
     }
-    
     return symbols;
 }
 bool MatchingEngine::has_order(core::OrderID order_id) const {
@@ -222,7 +203,6 @@ bool MatchingEngine::has_order(core::OrderID order_id) const {
         return active_orders_.find(order_id) != active_orders_.end();
     }
 }
-
 order::Order MatchingEngine::get_order(core::OrderID order_id) const {
     if (use_segment_tree_) {
         auto it = segment_tree_orders_.find(order_id);
@@ -239,7 +219,6 @@ order::Order MatchingEngine::get_order(core::OrderID order_id) const {
 }
 std::vector<order::Order> MatchingEngine::get_orders_for_symbol(const core::Symbol& symbol) const {
     std::vector<order::Order> orders;
-    
     if (use_segment_tree_) {
         for (const auto& pair : segment_tree_orders_) {
             if (pair.second.symbol == symbol) {
@@ -253,23 +232,19 @@ std::vector<order::Order> MatchingEngine::get_orders_for_symbol(const core::Symb
             }
         }
     }
-    
     return orders;
 }
 void MatchingEngine::matching_worker() {
     order::Order incoming_order;
     uint64_t processed_count = 0;
     auto last_throughput_log = core::HighResolutionClock::now();
-    
     if (logger_) {
         logger_->info("Matching worker thread started", "ENGINE");
     }
-    
     while (running_.load()) {
         if (incoming_orders_->dequeue(incoming_order)) {
             process_order(incoming_order);
             processed_count++;
-            
             auto now = core::HighResolutionClock::now();
             auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_throughput_log).count();
             if (processed_count >= 10000 || elapsed_ns >= 1000000000) {
@@ -284,33 +259,22 @@ void MatchingEngine::matching_worker() {
             std::this_thread::yield();
         }
     }
-    
     if (logger_) {
         logger_->info("Matching worker thread stopped", "ENGINE");
     }
 }
 void MatchingEngine::process_order(const order::Order& order) {
     const auto start_time = core::HighResolutionClock::rdtsc();
-
     if (logger_) {
         logger_->debug("Processing order " + std::to_string(order.id) + " for symbol " + order.symbol, "ENGINE");
     }
-
     std::vector<Fill> fills;
     order::Order active_order = order;
-    
     if (use_segment_tree_) {
-        // High-performance segment tree implementation
         core::OrderBookSegmentTree& segment_book = get_or_create_segment_tree_book(order.symbol);
         segment_tree_orders_[order.id] = order;
-        
-        // Use segment tree matching (simplified implementation)
         fills = match_order_segment_tree_price_time(active_order, segment_book);
-        
-        // Update order in storage
         segment_tree_orders_[order.id] = active_order;
-        
-        // Add remaining quantity to segment tree if not fully filled
         if (active_order.remaining_quantity() > 0 &&
             active_order.status != core::OrderStatus::CANCELLED) {
             segment_book.add_order(active_order.price, active_order.remaining_quantity(), active_order.side);
@@ -318,11 +282,9 @@ void MatchingEngine::process_order(const order::Order& order) {
             segment_tree_orders_.erase(order.id);
         }
     } else {
-        // Legacy order book implementation
         order::OrderBook& book = get_or_create_order_book(order.symbol);
         active_orders_[order.id] = order;
         active_order = active_orders_[order.id];
-        
         switch (algorithm_) {
             case MatchingAlgorithm::PRICE_TIME_PRIORITY:
                 fills = match_order_price_time_priority(active_order, book);
@@ -337,9 +299,7 @@ void MatchingEngine::process_order(const order::Order& order) {
                 fills = match_order_time_priority(active_order, book);
                 break;
         }
-        
         active_orders_[order.id] = active_order;
-        
         if (active_order.remaining_quantity() > 0 &&
             active_order.status != core::OrderStatus::CANCELLED) {
             book.add_order(active_order);
@@ -347,18 +307,15 @@ void MatchingEngine::process_order(const order::Order& order) {
             active_orders_.erase(active_order.id);
         }
     }
-    
     update_order_status(active_order, fills);
     ExecutionReport execution_report = create_execution_report(active_order, fills);
     const auto end_time = core::HighResolutionClock::rdtsc();
     double latency_ns = static_cast<double>(end_time - start_time) / 2.5;
     update_matching_latency(latency_ns);
     stats_.orders_processed.fetch_add(1);
-
     if (logger_) {
         logger_->log_latency_measurement("order_processing", latency_ns);
     }
-
     if (!fills.empty()) {
         stats_.orders_matched.fetch_add(1);
         if (logger_) {
@@ -380,9 +337,7 @@ void MatchingEngine::process_order(const order::Order& order) {
 std::vector<Fill> MatchingEngine::match_order_price_time_priority(const order::Order& incoming_order,
                                                                 order::OrderBook& book) {
     std::vector<Fill> fills;
-
     order::Order mutable_incoming = incoming_order;
-
     if (mutable_incoming.side == core::Side::BUY) {
         while (mutable_incoming.remaining_quantity() > 0) {
             auto best_ask = book.get_best_ask();
@@ -393,28 +348,21 @@ std::vector<Fill> MatchingEngine::match_order_price_time_priority(const order::O
             if (ask_orders.empty()) {
                 break;
             }
-
             auto passive_order_id = ask_orders[0].id;
             auto passive_order_it = active_orders_.find(passive_order_id);
             if (passive_order_it == active_orders_.end()) {
-
                 book.cancel_order(passive_order_id);
                 continue;
             }
-
             order::Order& passive_order = passive_order_it->second;
             core::Quantity fill_quantity = std::min(mutable_incoming.remaining_quantity(),
                                                    passive_order.remaining_quantity());
-
             Fill fill(mutable_incoming.id, passive_order.id, best_ask, fill_quantity,
                      mutable_incoming.symbol, core::HighResolutionClock::now());
             fills.push_back(fill);
-
             mutable_incoming.filled_quantity += fill_quantity;
             passive_order.filled_quantity += fill_quantity;
-
             book.fill_order(passive_order.id, fill_quantity);
-
             if (passive_order.remaining_quantity() == 0) {
                 passive_order.status = core::OrderStatus::FILLED;
                 active_orders_.erase(passive_order_it);
@@ -432,28 +380,21 @@ std::vector<Fill> MatchingEngine::match_order_price_time_priority(const order::O
             if (bid_orders.empty()) {
                 break;
             }
-
             auto passive_order_id = bid_orders[0].id;
             auto passive_order_it = active_orders_.find(passive_order_id);
             if (passive_order_it == active_orders_.end()) {
-
                 book.cancel_order(passive_order_id);
                 continue;
             }
-
             order::Order& passive_order = passive_order_it->second;
             core::Quantity fill_quantity = std::min(mutable_incoming.remaining_quantity(),
                                                    passive_order.remaining_quantity());
-
             Fill fill(mutable_incoming.id, passive_order.id, best_bid, fill_quantity,
                      mutable_incoming.symbol, core::HighResolutionClock::now());
             fills.push_back(fill);
-
             mutable_incoming.filled_quantity += fill_quantity;
             passive_order.filled_quantity += fill_quantity;
-
             book.fill_order(passive_order.id, fill_quantity);
-
             if (passive_order.remaining_quantity() == 0) {
                 passive_order.status = core::OrderStatus::FILLED;
                 active_orders_.erase(passive_order_it);
@@ -462,12 +403,10 @@ std::vector<Fill> MatchingEngine::match_order_price_time_priority(const order::O
             }
         }
     }
-
     auto incoming_it = active_orders_.find(mutable_incoming.id);
     if (incoming_it != active_orders_.end()) {
         incoming_it->second.filled_quantity = mutable_incoming.filled_quantity;
     }
-
     return fills;
 }
 std::vector<Fill> MatchingEngine::match_order_pro_rata(const order::Order& incoming_order,
@@ -490,8 +429,6 @@ order::OrderBook& MatchingEngine::get_or_create_order_book(const core::Symbol& s
     }
     return *it->second;
 }
-
-// Segment tree order book management
 core::OrderBookSegmentTree& MatchingEngine::get_or_create_segment_tree_book(const core::Symbol& symbol) {
     auto it = segment_tree_books_.find(symbol);
     if (it == segment_tree_books_.end()) {
@@ -503,17 +440,12 @@ core::OrderBookSegmentTree& MatchingEngine::get_or_create_segment_tree_book(cons
     }
     return *it->second;
 }
-
-// High-performance segment tree matching implementation
 std::vector<Fill> MatchingEngine::match_order_segment_tree(const order::Order& incoming_order,
                                                           core::OrderBookSegmentTree& segment_book) {
-    // Dispatch based on matching algorithm
     switch (algorithm_) {
         case MatchingAlgorithm::PRICE_TIME_PRIORITY:
             return match_order_segment_tree_price_time(incoming_order, segment_book);
         case MatchingAlgorithm::PRO_RATA:
-            // For now, fall back to price-time for other algorithms
-            // Can be extended later with specific implementations
             return match_order_segment_tree_price_time(incoming_order, segment_book);
         case MatchingAlgorithm::SIZE_PRIORITY:
             return match_order_segment_tree_price_time(incoming_order, segment_book);
@@ -523,35 +455,26 @@ std::vector<Fill> MatchingEngine::match_order_segment_tree(const order::Order& i
             return match_order_segment_tree_price_time(incoming_order, segment_book);
     }
 }
-
 std::vector<Fill> MatchingEngine::match_order_segment_tree_price_time(const order::Order& incoming_order,
                                                                      core::OrderBookSegmentTree& segment_book) {
     std::vector<Fill> fills;
     order::Order mutable_incoming = incoming_order;
-    
     if (mutable_incoming.side == core::Side::BUY) {
-        // Match against ask side (sellers)
         while (mutable_incoming.remaining_quantity() > 0) {
             core::Price best_ask = segment_book.get_best_ask();
             if (best_ask == 0.0 || mutable_incoming.price < best_ask) {
-                break; // No matching orders
+                break;
             }
-            
-            // Get available quantity at the best ask price from segment tree
             auto ask_depth = segment_book.get_ask_depth(1);
             if (ask_depth.empty()) {
                 break;
             }
-            
             core::Quantity available_quantity = std::min(
                 mutable_incoming.remaining_quantity(),
                 ask_depth[0].second
             );
-            
             if (available_quantity > 0) {
-                // Generate a synthetic passive order ID for the fill
                 core::OrderID passive_id = generate_synthetic_order_id();
-                
                 Fill fill(
                     mutable_incoming.id,
                     passive_id,
@@ -561,13 +484,8 @@ std::vector<Fill> MatchingEngine::match_order_segment_tree_price_time(const orde
                     core::HighResolutionClock::now()
                 );
                 fills.push_back(fill);
-                
-                // Update quantities
                 mutable_incoming.filled_quantity += available_quantity;
-                
-                // Remove liquidity from segment tree
                 segment_book.remove_order(best_ask, available_quantity, core::Side::SELL);
-                
                 if (logger_) {
                     logger_->debug(
                         "Segment tree match: " + std::to_string(mutable_incoming.id) +
@@ -580,28 +498,21 @@ std::vector<Fill> MatchingEngine::match_order_segment_tree_price_time(const orde
             }
         }
     } else {
-        // Match against bid side (buyers)
         while (mutable_incoming.remaining_quantity() > 0) {
             core::Price best_bid = segment_book.get_best_bid();
             if (best_bid == 0.0 || mutable_incoming.price > best_bid) {
-                break; // No matching orders
+                break;
             }
-            
-            // Get available quantity at the best bid price from segment tree
             auto bid_depth = segment_book.get_bid_depth(1);
             if (bid_depth.empty()) {
                 break;
             }
-            
             core::Quantity available_quantity = std::min(
                 mutable_incoming.remaining_quantity(),
                 bid_depth[0].second
             );
-            
             if (available_quantity > 0) {
-                // Generate a synthetic passive order ID for the fill
                 core::OrderID passive_id = generate_synthetic_order_id();
-                
                 Fill fill(
                     mutable_incoming.id,
                     passive_id,
@@ -611,13 +522,8 @@ std::vector<Fill> MatchingEngine::match_order_segment_tree_price_time(const orde
                     core::HighResolutionClock::now()
                 );
                 fills.push_back(fill);
-                
-                // Update quantities
                 mutable_incoming.filled_quantity += available_quantity;
-                
-                // Remove liquidity from segment tree
                 segment_book.remove_order(best_bid, available_quantity, core::Side::BUY);
-                
                 if (logger_) {
                     logger_->debug(
                         "Segment tree match: " + std::to_string(mutable_incoming.id) +
@@ -630,52 +536,38 @@ std::vector<Fill> MatchingEngine::match_order_segment_tree_price_time(const orde
             }
         }
     }
-    
-    // Update the incoming order's status in the main storage
     if (segment_tree_orders_.find(mutable_incoming.id) != segment_tree_orders_.end()) {
         segment_tree_orders_[mutable_incoming.id].filled_quantity = mutable_incoming.filled_quantity;
     }
-    
     return fills;
 }
-
-// Helper function to get orders at specific price level for segment tree
 std::vector<order::Order> MatchingEngine::get_segment_tree_orders_at_price(core::Price price, core::Side side) const {
     std::vector<order::Order> orders_at_price;
-    
     for (const auto& pair : segment_tree_orders_) {
         const order::Order& order = pair.second;
-        if (order.price == price && order.side == side && 
-            order.remaining_quantity() > 0 && 
-            order.status != core::OrderStatus::CANCELLED && 
+        if (order.price == price && order.side == side &&
+            order.remaining_quantity() > 0 &&
+            order.status != core::OrderStatus::CANCELLED &&
             order.status != core::OrderStatus::FILLED) {
             orders_at_price.push_back(order);
         }
     }
-    
-    // Sort by time priority (FIFO)
     std::sort(orders_at_price.begin(), orders_at_price.end(),
              [](const order::Order& a, const order::Order& b) {
                  return a.timestamp < b.timestamp;
              });
-    
     return orders_at_price;
 }
-
-// Helper function to generate synthetic order IDs for aggregate fills
 core::OrderID MatchingEngine::generate_synthetic_order_id() {
     static std::atomic<core::OrderID> synthetic_counter{900000000};
     return synthetic_counter.fetch_add(1);
 }
-
-// Order storage management functions for segment tree
 void MatchingEngine::store_segment_tree_order(const order::Order& order) {
     segment_tree_orders_[order.id] = order;
     if (logger_) {
         logger_->debug("Stored order " + std::to_string(order.id) + " in segment tree storage", "ENGINE");
     }
 }
-
 void MatchingEngine::update_segment_tree_order(const order::Order& order) {
     auto it = segment_tree_orders_.find(order.id);
     if (it != segment_tree_orders_.end()) {
@@ -685,14 +577,12 @@ void MatchingEngine::update_segment_tree_order(const order::Order& order) {
         }
     }
 }
-
 void MatchingEngine::remove_segment_tree_order(core::OrderID order_id) {
     auto erased = segment_tree_orders_.erase(order_id);
     if (logger_ && erased > 0) {
         logger_->debug("Removed order " + std::to_string(order_id) + " from segment tree storage", "ENGINE");
     }
 }
-
 void MatchingEngine::update_order_status(order::Order& order, const std::vector<Fill>& fills) {
     if (!fills.empty()) {
         if (order.remaining_quantity() == 0) {
@@ -709,7 +599,6 @@ ExecutionReport MatchingEngine::create_execution_report(const order::Order& orde
     report.fills = fills;
     report.execution_id = generate_execution_id();
     report.avg_executed_price = calculate_volume_weighted_price(fills);
-    // Fix: Set execution timestamp to current time, not original order timestamp
     report.timestamp = core::HighResolutionClock::now();
     return report;
 }

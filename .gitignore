@@ -222,25 +222,53 @@ vcpkg_installed/
 *.json
 data/
 market_data/
+tick_data/
 
 # Trading logs and output
 trading_logs/
 execution_reports/
 positions.txt
 pnl_reports/
+logs/
+*.log
 
 # Performance data
 latency_data/
 throughput_data/
 *.perf
+benchmark_run_*.log
+concurrency_demo.log
+backtest_demo.log
+demo_*.log
 
 # Configuration files with sensitive data
 config.txt
 trading_config.json
+redis.conf
 
 # Simulation results
 backtest_results/
 simulation_output/
+
+# HFT Engine v2.0 Performance Data
+build/hft_engine
+build/backtest_runner
+build/concurrency_test
+build/tick_data_generator
+performance_reports/
+memory_profiles/
+latency_histograms/
+throughput_metrics/
+
+# Redis data and temporary files
+dump.rdb
+redis.log
+/tmp/redis-cluster/
+
+# System optimization artifacts
+kernel_bypass_logs/
+numa_topology.txt
+cpu_affinity.conf
 
 # ============================================================================
 # Archive and Backup Files

@@ -158,6 +158,30 @@ endif()
 # Add tick data generator utility
 add_executable(tick_data_generator src/backtesting/tick_data_generator.cpp)
 
+# Add backtesting runner for demo
+set(BACKTEST_RUNNER_SOURCES
+    ${CORE_SOURCES}
+    ${ORDER_SOURCES}
+    ${FIX_SOURCES}
+    ${MATCHING_SOURCES}
+    ${ANALYTICS_SOURCES}
+    ${BACKTESTING_SOURCES}
+    src/backtest_runner.cpp
+)
+add_executable(backtest_runner ${BACKTEST_RUNNER_SOURCES})
+
+# Add concurrency uplift test
+set(CONCURRENCY_TEST_SOURCES
+    ${CORE_SOURCES}
+    ${ORDER_SOURCES}
+    ${FIX_SOURCES}
+    ${MATCHING_SOURCES}
+    ${ANALYTICS_SOURCES}
+    ${BACKTESTING_SOURCES}
+    src/concurrency_test.cpp
+)
+add_executable(concurrency_test ${CONCURRENCY_TEST_SOURCES})
+
 # Add tick replay demo
 # add_executable(tick_replay_demo src/tick_replay_demo.cpp ${BACKTESTING_SOURCES} ${CORE_SOURCES} ${ORDER_SOURCES} ${MATCHING_SOURCES} ${ANALYTICS_SOURCES})
 
@@ -189,6 +213,24 @@ if(ENABLE_REDIS_CLUSTER AND HIREDIS_CLUSTER_LIB)
     target_link_libraries(${PROJECT_NAME} ${HIREDIS_CLUSTER_LIB})
 endif()
 
+# Link libraries for backtest runner
+target_link_libraries(backtest_runner 
+    ${CMAKE_THREAD_LIBS_INIT}
+    /opt/homebrew/lib/libhiredis.dylib
+)
+if(ENABLE_REDIS_CLUSTER AND HIREDIS_CLUSTER_LIB)
+    target_link_libraries(backtest_runner ${HIREDIS_CLUSTER_LIB})
+endif()
+
+# Link libraries for concurrency test
+target_link_libraries(concurrency_test 
+    ${CMAKE_THREAD_LIBS_INIT}
+    /opt/homebrew/lib/libhiredis.dylib
+)
+if(ENABLE_REDIS_CLUSTER AND HIREDIS_CLUSTER_LIB)
+    target_link_libraries(concurrency_test ${HIREDIS_CLUSTER_LIB})
+endif()
+
 # target_link_libraries(fix_integration_example 
 #     ${CMAKE_THREAD_LIBS_INIT}
 #     /opt/homebrew/lib/libhiredis.dylib
@@ -208,6 +250,8 @@ endif()
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+    target_link_libraries(backtest_runner OpenMP::OpenMP_CXX)
+    target_link_libraries(concurrency_test OpenMP::OpenMP_CXX)
     # target_link_libraries(fix_integration_example OpenMP::OpenMP_CXX)
     # target_link_libraries(hft_engine_optimized OpenMP::OpenMP_CXX)
     message(STATUS "OpenMP support: ENABLED")

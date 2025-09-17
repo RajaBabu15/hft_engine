@@ -17,10 +17,7 @@ const std::string& FixMessage::get_field(uint32_t tag) const {
     return (it != fields.end()) ? it->second : empty_string;
 }
 void FixMessage::set_field(uint32_t tag, const std::string& value) {
-    // Store in map for fast lookup
     fields[tag] = value;
-    
-    // Update or add to ordered fields for serialization
     auto it = std::find_if(ordered_fields.begin(), ordered_fields.end(),
         [tag](const FixField& field) { return field.tag == tag; });
     if (it != ordered_fields.end()) {
@@ -30,7 +27,6 @@ void FixMessage::set_field(uint32_t tag, const std::string& value) {
     }
 }
 void FixMessage::set_field(uint32_t tag, std::string&& value) {
-    // Update or add to ordered fields first
     auto it = std::find_if(ordered_fields.begin(), ordered_fields.end(),
         [tag](const FixField& field) { return field.tag == tag; });
     if (it != ordered_fields.end()) {
@@ -106,45 +102,29 @@ void FixParser::start() {
     if (running_.load()) return;
     running_.store(true);
     worker_threads_.reserve(num_worker_threads_);
-    
-    // Optimize worker allocation for high throughput
-    // Use fewer parsing workers (1/3) and more processing workers (2/3)
-    // since processing (callback execution) is typically the bottleneck
     size_t parsing_workers = std::max(size_t(1), num_worker_threads_ / 3);
     size_t processing_workers = num_worker_threads_ - parsing_workers;
-    
-    // Start parsing workers
     for (size_t i = 0; i < parsing_workers; ++i) {
         worker_threads_.emplace_back(&FixParser::parsing_worker, this);
     }
-    
-    // Start processing workers
     for (size_t i = 0; i < processing_workers; ++i) {
         worker_threads_.emplace_back(&FixParser::processing_worker, this);
     }
 }
 void FixParser::stop() {
     if (!running_.load()) return;
-    
-    // Signal all threads to stop
     running_.store(false);
-    
-    // Wait for all worker threads to finish
     for (auto& thread : worker_threads_) {
         if (thread.joinable()) {
             thread.join();
         }
     }
     worker_threads_.clear();
-    
-    // Clear callbacks safely after threads are stopped
     {
         std::lock_guard<std::mutex> lock(callback_mutex_);
         message_callback_ = nullptr;
         error_callback_ = nullptr;
     }
-    
-    // Clear message buffer
     {
         std::lock_guard<std::mutex> lock(buffer_mutex_);
         message_buffer_.clear();
@@ -155,42 +135,28 @@ void FixParser::feed_data(const char* data, size_t length) {
     if (!running_.load() || data == nullptr || length == 0) {
         return;
     }
-    
-    // SOH characters verified to be working correctly
-    
     stats_.bytes_processed.fetch_add(length);
-    
     std::string message;
     int retry_count = 0;
     const int max_retries = 3;
-    
     {
         std::lock_guard<std::mutex> lock(buffer_mutex_);
         message_buffer_.append(data, length);
-        
-        // Extract messages
-        
         while (extract_next_message(message)) {
             if (!running_.load()) break;
-            
-            // Implement backpressure with retry logic
             bool enqueued = false;
             retry_count = 0;
-            
             while (!enqueued && retry_count < max_retries && running_.load()) {
                 if (raw_message_queue_->enqueue(std::move(message))) {
                     enqueued = true;
                 } else {
-                    // Queue is full, wait a bit and retry
                     retry_count++;
                     if (retry_count < max_retries) {
                         std::this_thread::sleep_for(std::chrono::microseconds(10));
                     }
                 }
             }
-            
             if (!enqueued) {
-                // After retries, log error and drop the message
                 stats_.queue_full_events.fetch_add(1);
                 stats_.messages_dropped.fetch_add(1);
                 std::lock_guard<std::mutex> cb_lock(callback_mutex_);
@@ -198,7 +164,6 @@ void FixParser::feed_data(const char* data, size_t length) {
                     error_callback_("QUEUE_FULL", "Raw message queue is full after retries");
                 }
             }
-            
             message.clear();
         }
     }
@@ -210,13 +175,11 @@ bool FixParser::parse_message(const std::string& raw_message, FixMessage& parsed
     auto start_time = std::chrono::high_resolution_clock::now();
     bool success = parse_message_internal(raw_message, parsed_message);
     auto end_time = std::chrono::high_resolution_clock::now();
-    
     if (success) {
         stats_.messages_parsed.fetch_add(1);
     } else {
         stats_.parse_errors.fetch_add(1);
     }
-    
     double parse_time = std::chrono::duration<double, std::nano>(end_time - start_time).count();
     update_parse_time(parse_time);
     return success;
@@ -230,7 +193,6 @@ void FixParser::set_worker_threads(size_t count) {
 void FixParser::parsing_worker() {
     std::string raw_message;
     FixMessage parsed_message;
-    
     while (running_.load()) {
         try {
             if (raw_message_queue_->dequeue(raw_message)) {
@@ -238,14 +200,11 @@ void FixParser::parsing_worker() {
                     raw_message.clear();
                     continue;
                 }
-                
                 parsed_message.clear();
                 if (parse_message_internal(raw_message, parsed_message)) {
-                    // Implement retry logic for parsed message queue
                     bool enqueued = false;
                     int retry_count = 0;
                     const int max_retries = 5;
-                    
                     while (!enqueued && retry_count < max_retries && running_.load()) {
                         if (parsed_message_queue_->enqueue(std::move(parsed_message))) {
                             enqueued = true;
@@ -256,7 +215,6 @@ void FixParser::parsing_worker() {
                             }
                         }
                     }
-                    
                     if (!enqueued) {
                         stats_.queue_full_events.fetch_add(1);
                         stats_.messages_dropped.fetch_add(1);
@@ -277,12 +235,10 @@ void FixParser::parsing_worker() {
                 std::this_thread::yield();
             }
         } catch (const std::exception& e) {
-            // Handle parsing errors gracefully
             stats_.parse_errors.fetch_add(1);
             raw_message.clear();
             std::this_thread::yield();
         } catch (...) {
-            // Handle unknown errors
             stats_.parse_errors.fetch_add(1);
             raw_message.clear();
             std::this_thread::yield();
@@ -292,10 +248,8 @@ void FixParser::parsing_worker() {
 void FixParser::processing_worker() {
     FixMessage parsed_message;
     static int processing_count = 0;
-    
     while (running_.load()) {
         if (parsed_message_queue_->dequeue(parsed_message)) {
-            // Copy callbacks under lock to prevent use-after-free
             MessageCallback msg_callback;
             ErrorCallback err_callback;
             {
@@ -303,7 +257,6 @@ void FixParser::processing_worker() {
                 msg_callback = message_callback_;
                 err_callback = error_callback_;
             }
-            
             if (msg_callback && running_.load()) {
                 try {
                     msg_callback(parsed_message);
@@ -327,56 +280,37 @@ void FixParser::processing_worker() {
 }
 bool FixParser::extract_next_message(std::string& message) {
     static int extract_count = 0;
-    bool should_debug = (++extract_count <= 5);  // Debug first 5 extractions
-    
-    // Ensure minimum message size
+    bool should_debug = (++extract_count <= 5);
     if (message_buffer_.size() < 20) {
         if (should_debug) std::cout << "[DEBUG] extract_next_message: buffer too small" << std::endl;
         return false;
     }
-    
-    // Find start of FIX message from current buffer position
     size_t start_pos = message_buffer_.find("8=FIX", buffer_position_);
     if (start_pos == std::string::npos) {
         buffer_position_ = 0;
         return false;
     }
-    
-    // Look for the end of this message by finding the checksum field (10=)
     size_t checksum_pos = message_buffer_.find("10=", start_pos);
     if (checksum_pos == std::string::npos) {
         return false;
     }
-    
-    // Find the SOH after the checksum (which marks end of message)
-    size_t end_search_start = checksum_pos + 3; // Skip "10="
+    size_t end_search_start = checksum_pos + 3;
     size_t message_end = message_buffer_.find(FIX_SOH, end_search_start);
     if (message_end == std::string::npos) {
         return false;
     }
-    
-    // Include the final SOH in the message
     message_end += 1;
-    
-    // Ensure the message is reasonable in size
     size_t message_length = message_end - start_pos;
     if (message_length > MAX_FIX_MESSAGE_SIZE) {
         buffer_position_ = start_pos + 1;
         return false;
     }
-    
-    // Extract the complete message
     message = message_buffer_.substr(start_pos, message_length);
     buffer_position_ = message_end;
-    
-    // Message extraction working correctly
-    
-    // Clean up buffer when it gets large
     if (buffer_position_ > message_buffer_.size() / 2 && buffer_position_ > 1024) {
         message_buffer_.erase(0, buffer_position_);
         buffer_position_ = 0;
     }
-    
     return true;
 }
 bool FixParser::parse_message_internal(const std::string& raw_message, FixMessage& message) {
@@ -519,66 +453,54 @@ FixMessageBuilder& FixMessageBuilder::sending_time(const std::string& time) {
     message_.sending_time = time;
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::field(uint32_t tag, const std::string& value) {
     message_.set_field(tag, value);
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::field(uint32_t tag, double value, int precision) {
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(precision) << value;
     message_.set_field(tag, ss.str());
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::field(uint32_t tag, int64_t value) {
     message_.set_field(tag, std::to_string(value));
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::field(uint32_t tag, uint64_t value) {
     message_.set_field(tag, std::to_string(value));
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::cl_ord_id(const std::string& client_order_id) {
     message_.set_field(Tags::CL_ORD_ID, client_order_id);
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::order_id(const std::string& order_id) {
     message_.set_field(Tags::ORDER_ID, order_id);
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::symbol(const std::string& symbol) {
     message_.set_field(Tags::SYMBOL, symbol);
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::side(char side) {
     message_.set_field(Tags::SIDE, std::string(1, side));
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::order_qty(uint64_t quantity) {
     message_.set_field(Tags::ORDER_QTY, std::to_string(quantity));
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::price(double price, int precision) {
     std::ostringstream ss;
     ss << std::fixed << std::setprecision(precision) << price;
     message_.set_field(Tags::PRICE, ss.str());
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::ord_type(char type) {
     message_.set_field(Tags::ORD_TYPE, std::string(1, type));
     return *this;
 }
-
 FixMessageBuilder& FixMessageBuilder::time_in_force(char tif) {
     message_.set_field(Tags::TIME_IN_FORCE, std::string(1, tif));
     return *this;
@@ -654,7 +576,6 @@ std::string serialize_fix_message(const FixMessage& message) {
     for (const auto& field : message.ordered_fields) {
         ss << field.tag << "=" << field.value << FIX_SOH;
     }
-    
     return ss.str();
 }
 bool is_admin_message(const std::string& msg_type) {

@@ -81,19 +81,13 @@ public:
     using FillCallback = std::function<void(const Fill&)>;
     using ErrorCallback = std::function<void(const std::string&, const std::string&)>;
 private:
-    static constexpr size_t ORDER_QUEUE_SIZE = 65536; 
+    static constexpr size_t ORDER_QUEUE_SIZE = 65536;
     static constexpr size_t MAX_SYMBOLS = 1000;
-    
-    // Legacy order books (for backward compatibility)
     std::unordered_map<core::Symbol, std::unique_ptr<order::OrderBook>> order_books_;
-    
-    // High-performance segment tree order books
     std::unordered_map<core::Symbol, std::unique_ptr<core::OrderBookSegmentTree>> segment_tree_books_;
     std::unordered_map<core::OrderID, order::Order> segment_tree_orders_;
     bool use_segment_tree_;
-    
     std::unique_ptr<core::LockFreeQueue<order::Order, ORDER_QUEUE_SIZE>> incoming_orders_;
-
     std::atomic<bool> running_{false};
     std::thread matching_thread_;
     MatchingAlgorithm algorithm_;
@@ -105,7 +99,7 @@ private:
     std::atomic<core::OrderID> next_execution_id_{1};
     std::unique_ptr<core::AsyncLogger> logger_;
 public:
-    explicit MatchingEngine(MatchingAlgorithm algorithm = MatchingAlgorithm::PRICE_TIME_PRIORITY, 
+    explicit MatchingEngine(MatchingAlgorithm algorithm = MatchingAlgorithm::PRICE_TIME_PRIORITY,
                            const std::string& log_path = "logs/engine_logs.log",
                            bool use_segment_tree = false);
     ~MatchingEngine();
@@ -142,25 +136,17 @@ private:
                                                order::OrderBook& book);
     std::vector<Fill> match_order_time_priority(const order::Order& incoming_order,
                                                order::OrderBook& book);
-    
     order::OrderBook& get_or_create_order_book(const core::Symbol& symbol);
     core::OrderBookSegmentTree& get_or_create_segment_tree_book(const core::Symbol& symbol);
-    
-    // Segment tree matching functions
     std::vector<Fill> match_order_segment_tree(const order::Order& incoming_order,
                                                core::OrderBookSegmentTree& segment_book);
     std::vector<Fill> match_order_segment_tree_price_time(const order::Order& incoming_order,
                                                          core::OrderBookSegmentTree& segment_book);
-    
-    // Helper functions for segment tree operations
     std::vector<order::Order> get_segment_tree_orders_at_price(core::Price price, core::Side side) const;
     core::OrderID generate_synthetic_order_id();
-    
-    // Order storage management for segment tree
     void store_segment_tree_order(const order::Order& order);
     void update_segment_tree_order(const order::Order& order);
     void remove_segment_tree_order(core::OrderID order_id);
-    
     void update_order_status(order::Order& order, const std::vector<Fill>& fills);
     ExecutionReport create_execution_report(const order::Order& order,
                                           const std::vector<Fill>& fills);
@@ -176,7 +162,6 @@ private:
     double calculate_market_impact(const order::Order& order, order::OrderBook& book) const;
     core::Price calculate_volume_weighted_price(const std::vector<Fill>& fills) const;
 };
-
 class MarketMakingEngine {
 private:
     std::unique_ptr<MatchingEngine> matching_engine_;

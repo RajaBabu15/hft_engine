@@ -205,7 +205,6 @@ public:
         bool print_progress = true;
         size_t progress_interval = 100000;
     };
-    
 private:
     std::unique_ptr<MarketDataParser> data_parser_;
     std::unique_ptr<matching::MatchingEngine> matching_engine_;
