@@ -18,7 +18,6 @@ A comprehensive, institutional-grade HFT system engineered for ultra-low latency
 ## 📜 **AVAILABLE SCRIPTS**
 
 - **`./demo.sh`** - Complete performance demonstration with metrics, verification, and cleanup
-- **`./engine.sh`** - Run the HFT engine directly (minimal output)
 - **`./build.sh`** - Build the project with optimizations
 - **`./clean.sh`** - Clean build artifacts
 
@@ -27,19 +26,22 @@ A comprehensive, institutional-grade HFT system engineered for ultra-low latency
 ```bash
 git clone https://github.com/RajaBabu15/hft_engine.git
 cd hft_engine
-./demo.sh  # Complete performance demo with all metrics
-# OR
-./engine.sh  # Direct engine execution
+./demo.sh  # Complete performance demonstration
 ```
 
-**Expected Engine Output:**
+**Expected Output:**
 ```
-🏆 HFT ENGINE PERFORMANCE RESULTS:
-📈 854,701 msg/sec throughput
-   Messages: 100,000 | Target: 100k+ ✅
-⚡ P50: 20.26μs | P99: 31.08μs (target <50μs)
-💰 334 executions
-🎯 COMPONENTS: Orders 334 | Fills 0 | P&L trades 734
-💾 Redis ops: 2,334 | Latency: 43.5μs
-✅ ALL RESUME CLAIMS VERIFIED
+RESULT
+throughput = 892857
+messages = 100000
+target_met = true
+p50_latency_us = 43.5
+p99_latency_us = 58.0
+executions = 973
+orders = 973
+fills = 0
+pnl_trades = 1373
+redis_ops = 2973
+redis_latency_us = 40.4
+claims_verified = true
 ```
