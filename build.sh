@@ -45,7 +45,7 @@ print_success "CMake found: $CMAKE_VERSION"
 # Check for Redis (optional but recommended)
 if command -v redis-server &> /dev/null; then
     print_success "Redis server found"
-    
+
     # Check if Redis is running
     if pgrep redis-server > /dev/null; then
         print_success "Redis server is already running"
@@ -130,11 +130,11 @@ cd ..
 # Build Python bindings if Python is available
 if command -v python3 &> /dev/null; then
     print_status "Building Python bindings..."
-    
+
     # Check if pybind11 is available
     if python3 -c "import pybind11" 2>/dev/null; then
         print_success "pybind11 found"
-        
+
         # Build wheel
         if python3 -m build --wheel 2>/dev/null; then
             print_success "Python wheel built successfully"
@@ -190,7 +190,7 @@ if [[ $ARTIFACTS_FOUND -ge 2 ]]; then
     print_success "🎉 BUILD COMPLETED SUCCESSFULLY! 🎉"
     print_status "Ready to run:"
     echo "  ./run.sh                    # Run main engine"
-    echo "  ./run.sh benchmark         # Run performance benchmark" 
+    echo "  ./run.sh benchmark         # Run performance benchmark"
     echo "  ./run.sh demo              # Run demonstration"
     echo "  python3 real_data_demo.py  # Run Python demo with real data"
 else
@@ -248,16 +248,16 @@ print_error() {
 # Function to check prerequisites
 check_prerequisites() {
     print_status "Checking prerequisites..."
-    
+
     # Check CMake
     if ! command -v cmake &> /dev/null; then
         print_error "CMake not found. Please install CMake 3.16 or higher."
         exit 1
     fi
-    
+
     CMAKE_VERSION=$(cmake --version | head -n1 | cut -d' ' -f3)
     print_status "CMake version: $CMAKE_VERSION"
-    
+
     # Check compiler
     if command -v clang++ &> /dev/null; then
         COMPILER="clang++"
@@ -269,16 +269,16 @@ check_prerequisites() {
         print_error "No suitable C++ compiler found. Please install clang++ or g++."
         exit 1
     fi
-    
+
     print_status "Compiler: $COMPILER_VERSION"
-    
+
     # Check Redis (optional for full functionality)
     if command -v redis-server &> /dev/null; then
         print_status "Redis server found: $(redis-server --version | head -n1)"
     else
         print_warning "Redis server not found. Some benchmarks may not work."
     fi
-    
+
     # Check hiredis library
     if [[ "$SYSTEM" == "Darwin" ]]; then
         if [[ -f "/opt/homebrew/lib/libhiredis.dylib" ]]; then
@@ -299,12 +299,12 @@ check_prerequisites() {
 # Function to create build directory
 setup_build_directory() {
     print_status "Setting up build directory..."
-    
+
     if [[ -d "$BUILD_DIR" ]]; then
         print_status "Cleaning existing build directory..."
         rm -rf "$BUILD_DIR"
     fi
-    
+
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
 }
@@ -312,11 +312,11 @@ setup_build_directory() {
 # Function to configure with CMake
 configure_cmake() {
     print_status "Configuring with CMake..."
-    
+
     CMAKE_ARGS=(
         -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE"
     )
-    
+
     # Platform-specific optimizations
     if [[ "$CMAKE_BUILD_TYPE" == "Release" ]]; then
         if [[ "$ARCH" == "arm64" ]] || [[ "$ARCH" == "aarch64" ]]; then
@@ -325,14 +325,14 @@ configure_cmake() {
             print_status "Applying x86_64 optimizations"
         fi
     fi
-    
+
     # Add verbose output if requested
     if [[ "$VERBOSE" == "ON" ]]; then
         CMAKE_ARGS+=(-DCMAKE_VERBOSE_MAKEFILE=ON)
     fi
-    
+
     cmake "${CMAKE_ARGS[@]}" ..
-    
+
     if [[ $? -ne 0 ]]; then
         print_error "CMake configuration failed!"
         exit 1
@@ -342,17 +342,17 @@ configure_cmake() {
 # Function to build the project
 build_project() {
     print_status "Building project with $NCPUS cores..."
-    
+
     MAKE_ARGS=(
         -j"$NCPUS"
     )
-    
+
     if [[ "$VERBOSE" == "ON" ]]; then
         MAKE_ARGS+=(VERBOSE=1)
     fi
-    
+
     make "${MAKE_ARGS[@]}"
-    
+
     if [[ $? -ne 0 ]]; then
         print_error "Build failed!"
         exit 1
@@ -363,48 +363,48 @@ build_project() {
 display_results() {
     print_status "Build completed successfully!"
     echo ""
-    
+
     print_status "Built executables:"
     if [[ -f "$PROJECT_NAME" ]]; then
         echo "  ✅ $PROJECT_NAME (main engine)"
         ls -lh "$PROJECT_NAME"
     fi
-    
+
     if [[ -f "benchmark" ]]; then
         echo "  ✅ benchmark (performance testing)"
         ls -lh benchmark
     fi
-    
+
     echo ""
     print_status "Available targets:"
     echo "  make run           - Run the main HFT engine"
     echo "  make run_benchmark - Run performance benchmarks"
     echo ""
-    
+
     print_status "Build artifacts location: $(pwd)"
 }
 
 # Function to verify build
 verify_build() {
     print_status "Verifying build..."
-    
+
     if [[ ! -f "$PROJECT_NAME" ]]; then
         print_error "Main executable not found!"
         return 1
     fi
-    
+
     if [[ ! -x "$PROJECT_NAME" ]]; then
         print_error "Main executable is not executable!"
         return 1
     fi
-    
+
     # Quick smoke test
     if ./"$PROJECT_NAME" --version &>/dev/null; then
         print_status "Executable verification passed"
     else
         print_warning "Executable may have issues (--version failed)"
     fi
-    
+
     return 0
 }
 
@@ -468,32 +468,32 @@ done
 main() {
     # Record start time
     START_TIME=$(date +%s)
-    
+
     # Ensure we're in the project root
     cd "$(dirname "${BASH_SOURCE[0]}")"
-    
+
     check_prerequisites
-    
+
     # Clean build if requested
     if [[ "$CLEAN_BUILD" == true ]] && [[ -d "$BUILD_DIR" ]]; then
         print_status "Performing clean build..."
         rm -rf "$BUILD_DIR"
     fi
-    
+
     setup_build_directory
     configure_cmake
     build_project
-    
+
     if [[ "$VERIFY_BUILD" == true ]]; then
         verify_build
     fi
-    
+
     display_results
-    
+
     # Calculate build time
     END_TIME=$(date +%s)
     BUILD_TIME=$((END_TIME - START_TIME))
-    
+
     echo ""
     print_status "Build completed in ${BUILD_TIME}s"
     echo ""

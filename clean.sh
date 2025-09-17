@@ -56,7 +56,7 @@ usage() {
 # Function to clean build directory
 clean_build() {
     print_status "Cleaning build directory..."
-    
+
     if [[ -d "build" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
             echo "  Would remove: build/"
@@ -76,7 +76,7 @@ clean_build() {
 # Function to clean Python artifacts
 clean_python() {
     print_status "Cleaning Python build artifacts..."
-    
+
     # Python bytecode
     if find . -name "*.pyc" -o -name "*.pyo" | grep -q .; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -88,7 +88,7 @@ clean_python() {
             echo "  ✅ Removed Python bytecode files"
         fi
     fi
-    
+
     # __pycache__ directories
     if find . -name "__pycache__" -type d | grep -q .; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -99,7 +99,7 @@ clean_python() {
             echo "  ✅ Removed __pycache__ directories"
         fi
     fi
-    
+
     # Python build directories
     local python_build_dirs=("build" "dist" "*.egg-info" ".eggs")
     for dir in "${python_build_dirs[@]}"; do
@@ -112,7 +112,7 @@ clean_python() {
             fi
         fi
     done
-    
+
     # Python wheel files
     if ls *.whl 2>/dev/null | grep -q .; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -128,7 +128,7 @@ clean_python() {
 # Function to clean cache files
 clean_cache() {
     print_status "Cleaning cache files..."
-    
+
     # Data cache directory
     if [[ -d "data" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -139,7 +139,7 @@ clean_cache() {
             echo "  ✅ Removed data cache directory"
         fi
     fi
-    
+
     # Log files
     local log_patterns=("*.log" "*.log.*" "*.out" "*.err")
     for pattern in "${log_patterns[@]}"; do
@@ -153,7 +153,7 @@ clean_cache() {
             fi
         fi
     done
-    
+
     # Temporary files
     local temp_patterns=("*.tmp" "*.temp" "*~" ".*.swp" ".*.swo")
     for pattern in "${temp_patterns[@]}"; do
@@ -166,7 +166,7 @@ clean_cache() {
             fi
         fi
     done
-    
+
     # macOS specific files
     if [[ "$(uname -s)" == "Darwin" ]]; then
         if find . -name ".DS_Store" | grep -q .; then
@@ -179,7 +179,7 @@ clean_cache() {
             fi
         fi
     fi
-    
+
     # Core dumps
     if ls core.* 2>/dev/null | grep -q .; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -195,7 +195,7 @@ clean_cache() {
 # Function to clean IDE/editor files
 clean_ide() {
     print_status "Cleaning IDE/editor files..."
-    
+
     # Visual Studio Code
     if [[ -d ".vscode" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -205,7 +205,7 @@ clean_ide() {
             print_warning "Skipping .vscode/ directory (may contain user settings)"
         fi
     fi
-    
+
     # CLion/IntelliJ
     local ide_dirs=(".idea" "cmake-build-debug" "cmake-build-release")
     for dir in "${ide_dirs[@]}"; do
@@ -218,7 +218,7 @@ clean_ide() {
             fi
         fi
     done
-    
+
     # Vim files
     if find . -name "*.swp" -o -name "*.swo" -o -name "*~" | grep -q .; then
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -236,19 +236,19 @@ clean_ide() {
 calculate_space() {
     if command -v du &> /dev/null; then
         print_status "Calculating space usage..."
-        
+
         local total_size=0
-        
+
         if [[ -d "build" ]]; then
             local build_size=$(du -sh build 2>/dev/null | cut -f1)
             echo "  Build directory: $build_size"
         fi
-        
+
         local python_size=$(find . -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" -type d | xargs du -ch 2>/dev/null | tail -n1 | cut -f1 2>/dev/null || echo "0")
         if [[ "$python_size" != "0" ]]; then
             echo "  Python artifacts: $python_size"
         fi
-        
+
         local log_size=$(find . -name "*.log" -o -name "*.log.*" | xargs du -ch 2>/dev/null | tail -n1 | cut -f1 2>/dev/null || echo "0")
         if [[ "$log_size" != "0" ]]; then
             echo "  Log files: $log_size"
@@ -303,18 +303,18 @@ done
 # Main cleaning process
 main() {
     cd "$PROJECT_DIR"
-    
+
     if [[ "$DRY_RUN" == "true" ]]; then
         print_warning "DRY RUN MODE - No files will be actually deleted"
         echo ""
     fi
-    
+
     # Calculate space before cleaning
     if [[ "$DRY_RUN" == "false" ]]; then
         calculate_space
         echo ""
     fi
-    
+
     # Perform cleaning based on options
     if [[ "$CLEAN_ALL" == "true" ]]; then
         clean_build
@@ -325,23 +325,23 @@ main() {
         if [[ "$CLEAN_BUILD" == "true" ]]; then
             clean_build
         fi
-        
+
         if [[ "$CLEAN_PYTHON" == "true" ]]; then
             clean_python
         fi
-        
+
         if [[ "$CLEAN_CACHE" == "true" ]]; then
             clean_cache
         fi
     fi
-    
+
     echo ""
     if [[ "$DRY_RUN" == "true" ]]; then
         print_status "Dry run completed. No files were actually deleted."
     else
         print_status "Cleaning completed successfully!"
     fi
-    
+
     echo ""
     echo -e "${GREEN}🎉 Clean operation finished!${NC}"
 }
