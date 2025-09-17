@@ -80,7 +80,7 @@ public:
     using FillCallback = std::function<void(const Fill&)>;
     using ErrorCallback = std::function<void(const std::string&, const std::string&)>;
 private:
-    static constexpr size_t ORDER_QUEUE_SIZE = 8192;
+    static constexpr size_t ORDER_QUEUE_SIZE = 65536; // Increased for high-volume tests
     static constexpr size_t MAX_SYMBOLS = 1000;
     std::unordered_map<core::Symbol, std::unique_ptr<order::OrderBook>> order_books_;
     std::unique_ptr<core::LockFreeQueue<order::Order, ORDER_QUEUE_SIZE>> incoming_orders_;

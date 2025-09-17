@@ -22,8 +22,8 @@ if [ -f "logs/engine_logs.log" ]; then
 fi
 
 # Run the HFT engine
-echo "🎯 Running HFT Engine with async logging..."
-echo "   Log file: logs/engine_logs.log"
+echo "🎯 Running HFT Engine with enhanced order matching..."
+echo "   (Async logging temporarily disabled for stability)"
 echo
 if ./build/hft_engine; then
     echo
