@@ -20,7 +20,7 @@ ext_modules = [
     Pybind11Extension(
         "hft_engine_cpp",
         sorted(glob.glob("src/python_bindings.cpp") + 
-               glob.glob("src/core/*.cpp") + 
+               [f for f in glob.glob("src/core/*.cpp") if not f.endswith('redis_client.cpp')] + 
                glob.glob("src/order/*.cpp")),
         include_dirs=[
             "include",

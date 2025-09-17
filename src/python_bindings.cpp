@@ -6,7 +6,7 @@
 #include "hft/core/types.hpp"
 #include "hft/core/clock.hpp"
 #include "hft/core/lock_free_queue.hpp"
-#include "hft/core/object_pool.hpp"
+// #include "hft/core/object_pool.hpp"
 #include "hft/order/order.hpp"
 #include "hft/order/order_book.hpp"
 #include "hft/order/price_level.hpp"
@@ -68,10 +68,12 @@ PYBIND11_MODULE(hft_engine_cpp, m) {
     
     py::class_<hft::core::LockFreeQueue<int, 1024>>(m, "IntLockFreeQueue")
         .def(py::init<>())
-        .def("push", &hft::core::LockFreeQueue<int, 1024>::push)
+        .def("push", [](hft::core::LockFreeQueue<int, 1024>& queue, int value) -> bool {
+            return queue.enqueue(std::move(value));
+        })
         .def("pop", [](hft::core::LockFreeQueue<int, 1024>& queue) -> py::object {
             int value;
-            if (queue.pop(value)) {
+            if (queue.dequeue(value)) {
                 return py::cast(value);
             }
             return py::none();
@@ -81,10 +83,12 @@ PYBIND11_MODULE(hft_engine_cpp, m) {
         
     py::class_<hft::core::LockFreeQueue<double, 1024>>(m, "DoubleLockFreeQueue")
         .def(py::init<>())
-        .def("push", &hft::core::LockFreeQueue<double, 1024>::push)
+        .def("push", [](hft::core::LockFreeQueue<double, 1024>& queue, double value) -> bool {
+            return queue.enqueue(std::move(value));
+        })
         .def("pop", [](hft::core::LockFreeQueue<double, 1024>& queue) -> py::object {
             double value;
-            if (queue.pop(value)) {
+            if (queue.dequeue(value)) {
                 return py::cast(value);
             }
             return py::none();

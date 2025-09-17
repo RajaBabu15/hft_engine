@@ -31,6 +31,7 @@ endif()
 # ============================================================================
 
 include_directories(include)
+include_directories(/opt/homebrew/include)
 
 # ============================================================================
 # Source Files
@@ -38,7 +39,8 @@ include_directories(include)
 
 # Core components
 set(CORE_SOURCES
-    src/core/clock.cpp
+    src/core/redis_client.cpp
+    src/core/simple_clock.cpp
 )
 
 # Order management
@@ -48,10 +50,36 @@ set(ORDER_SOURCES
     src/order/order_book.cpp
 )
 
+# FIX protocol
+set(FIX_SOURCES
+    src/fix/fix_parser.cpp
+)
+
+# Matching engine
+set(MATCHING_SOURCES
+    src/matching/matching_engine.cpp
+)
+
+# Analytics
+set(ANALYTICS_SOURCES
+    src/analytics/pnl_calculator.cpp
+)
+
+# Testing framework
+set(TESTING_SOURCES
+    src/testing/stress_test.cpp
+)
+
+# Comprehensive HFT Engine sources
+set(ENGINE_SOURCES
+    src/engine/hft_engine.cpp
+)
+
 # All source files
 set(ALL_SOURCES
     ${CORE_SOURCES}
     ${ORDER_SOURCES}
+    src/simple_demo.cpp
     src/main.cpp
 )
 
@@ -61,12 +89,61 @@ set(ALL_SOURCES
 
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
+# Comprehensive HFT Engine Demonstration
+add_executable(hft_engine_demo
+    run_integrated_hft_engine.cpp
+    ${CORE_SOURCES}
+    ${ORDER_SOURCES}
+    ${FIX_SOURCES}
+    ${MATCHING_SOURCES}
+    ${ANALYTICS_SOURCES}
+    ${TESTING_SOURCES}
+    ${ENGINE_SOURCES}
+)
+
+# HFT Performance Benchmark
+add_executable(benchmark 
+    src/benchmark.cpp
+    ${CORE_SOURCES}
+    ${ORDER_SOURCES}
+)
+
 # ============================================================================
 # Linking
 # ============================================================================
 
 target_link_libraries(${PROJECT_NAME} 
     ${CMAKE_THREAD_LIBS_INIT}
+    /opt/homebrew/lib/libhiredis.dylib
+)
+
+# ARM64 and macOS specific optimizations for benchmark
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    target_compile_definitions(benchmark PRIVATE __aarch64__=1)
+    target_compile_options(benchmark PRIVATE 
+        -mcpu=native
+        -mtune=native
+        -march=armv8-a+simd
+        -O3
+        -DNDEBUG
+        -ffast-math
+        -funroll-loops
+    )
+endif()
+
+if(APPLE)
+    target_compile_definitions(benchmark PRIVATE __APPLE__=1)
+endif()
+
+target_link_libraries(benchmark 
+    ${CMAKE_THREAD_LIBS_INIT}
+    /opt/homebrew/lib/libhiredis.dylib
+)
+
+# Link comprehensive HFT demo
+target_link_libraries(hft_engine_demo
+    ${CMAKE_THREAD_LIBS_INIT}
+    /opt/homebrew/lib/libhiredis.dylib
 )
 
 # ============================================================================
@@ -79,6 +156,27 @@ add_custom_target(run
     DEPENDS ${PROJECT_NAME}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running HFT Engine"
+)
+
+add_custom_target(run_benchmark
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/benchmark
+    DEPENDS benchmark
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running HFT Performance Benchmark"
+)
+
+add_custom_target(run_demo
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/hft_engine_demo
+    DEPENDS hft_engine_demo
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running Comprehensive HFT Engine Demo"
+)
+
+add_custom_target(run_stress_test
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/hft_engine_demo 2
+    DEPENDS hft_engine_demo
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running HFT Stress Test (100k+ msg/sec)"
 )
 
 # Python demo target (if Python is available)

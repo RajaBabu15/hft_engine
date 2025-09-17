@@ -46,6 +46,21 @@ public:
     // Get market depth
     std::vector<std::pair<core::Price, core::Quantity>> get_bids(size_t depth = 10) const;
     std::vector<std::pair<core::Price, core::Quantity>> get_asks(size_t depth = 10) const;
+    
+    // Get orders at specific price level (for matching engine)
+    std::vector<Order> get_orders_at_price_level(core::Price price, core::Side side) const;
+    std::vector<Order> get_orders_at_price(core::Price price, core::Side side) const;
+    
+    // Get all orders for a side
+    std::vector<Order> get_all_buys() const;
+    std::vector<Order> get_all_sells() const;
+    
+    // Fill order partially
+    bool fill_order(core::OrderID order_id, core::Quantity quantity);
+    
+    // Check if order exists
+    bool has_order(core::OrderID order_id) const;
+    Order get_order(core::OrderID order_id) const;
 };
 
 } // namespace order

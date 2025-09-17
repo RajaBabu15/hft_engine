@@ -113,5 +113,126 @@ std::vector<std::pair<core::Price, core::Quantity>> OrderBook::get_asks(size_t d
     return result;
 }
 
+std::vector<Order> OrderBook::get_orders_at_price_level(core::Price price, core::Side side) const {
+    return get_orders_at_price(price, side);
+}
+
+std::vector<Order> OrderBook::get_orders_at_price(core::Price price, core::Side side) const {
+    std::vector<Order> result;
+    
+    if (side == core::Side::BUY) {
+        auto level_it = bid_levels_.find(price);
+        if (level_it != bid_levels_.end()) {
+            for (const auto& order_entry : level_it->second.order_queue) {
+                auto order_it = orders_.find(order_entry.order_id);
+                if (order_it != orders_.end()) {
+                    result.push_back(order_it->second);
+                }
+            }
+        }
+    } else {
+        auto level_it = ask_levels_.find(price);
+        if (level_it != ask_levels_.end()) {
+            for (const auto& order_entry : level_it->second.order_queue) {
+                auto order_it = orders_.find(order_entry.order_id);
+                if (order_it != orders_.end()) {
+                    result.push_back(order_it->second);
+                }
+            }
+        }
+    }
+    
+    return result;
+}
+
+std::vector<Order> OrderBook::get_all_buys() const {
+    std::vector<Order> result;
+    
+    for (const auto& level : bid_levels_) {
+        for (const auto& order_entry : level.second.order_queue) {
+            auto order_it = orders_.find(order_entry.order_id);
+            if (order_it != orders_.end()) {
+                result.push_back(order_it->second);
+            }
+        }
+    }
+    
+    return result;
+}
+
+std::vector<Order> OrderBook::get_all_sells() const {
+    std::vector<Order> result;
+    
+    for (const auto& level : ask_levels_) {
+        for (const auto& order_entry : level.second.order_queue) {
+            auto order_it = orders_.find(order_entry.order_id);
+            if (order_it != orders_.end()) {
+                result.push_back(order_it->second);
+            }
+        }
+    }
+    
+    return result;
+}
+
+bool OrderBook::fill_order(core::OrderID order_id, core::Quantity quantity) {
+    auto it = orders_.find(order_id);
+    if (it == orders_.end()) {
+        return false;
+    }
+    
+    Order& order = it->second;
+    if (order.filled_quantity + quantity > order.quantity) {
+        return false; // Can't fill more than order quantity
+    }
+    
+    order.filled_quantity += quantity;
+    
+    // Update price level
+    if (order.side == core::Side::BUY) {
+        auto level_it = bid_levels_.find(order.price);
+        if (level_it != bid_levels_.end()) {
+            level_it->second.reduce_quantity(order_id, quantity);
+            if (order.remaining_quantity() == 0) {
+                level_it->second.remove_order(order_id, 0);
+            }
+            if (level_it->second.empty()) {
+                bid_levels_.erase(level_it);
+            }
+        }
+    } else {
+        auto level_it = ask_levels_.find(order.price);
+        if (level_it != ask_levels_.end()) {
+            level_it->second.reduce_quantity(order_id, quantity);
+            if (order.remaining_quantity() == 0) {
+                level_it->second.remove_order(order_id, 0);
+            }
+            if (level_it->second.empty()) {
+                ask_levels_.erase(level_it);
+            }
+        }
+    }
+    
+    // Remove order if fully filled
+    if (order.remaining_quantity() == 0) {
+        orders_.erase(it);
+    }
+    
+    best_prices_valid_ = false;
+    return true;
+}
+
+bool OrderBook::has_order(core::OrderID order_id) const {
+    return orders_.find(order_id) != orders_.end();
+}
+
+Order OrderBook::get_order(core::OrderID order_id) const {
+    auto it = orders_.find(order_id);
+    if (it != orders_.end()) {
+        return it->second;
+    }
+    return Order(); // Return empty order if not found
+}
+
 } // namespace order
 } // namespace hft
