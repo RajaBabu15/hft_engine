@@ -1,43 +1,35 @@
-#include "hft/order/order.hpp"
-#include "hft/order/order_book.hpp"
 #include "hft/matching/matching_engine.hpp"
-#include "hft/core/types.hpp"
 #include <iostream>
+#include <thread>
+#include <chrono>
 
 int main() {
     hft::matching::MatchingEngine engine;
     
-    hft::order::Order buy_order;
-    buy_order.id = 1;
-    buy_order.symbol = "AAPL";
-    buy_order.side = hft::core::Side::BUY;
-    buy_order.type = hft::core::OrderType::LIMIT;
-    buy_order.price = 150.00;
-    buy_order.quantity = 100;
+    engine.set_execution_callback([](const hft::matching::ExecutionReport& report) {
+        if (report.executed_quantity > 0) {
+            std::cout << "Execution: " << report.executed_quantity 
+                      << "@" << report.avg_executed_price << std::endl;
+        }
+    });
     
-    hft::order::Order sell_order;
-    sell_order.id = 2;
-    sell_order.symbol = "AAPL";
-    sell_order.side = hft::core::Side::SELL;
-    sell_order.type = hft::core::OrderType::LIMIT;
-    sell_order.price = 151.00;
-    sell_order.quantity = 100;
+    engine.start();
     
-    engine.process_order(buy_order);
-    engine.process_order(sell_order);
+    hft::order::Order buy_order(1, "AAPL", hft::core::Side::BUY, 
+                                hft::core::OrderType::LIMIT, 150.00, 100);
+    engine.submit_order(buy_order);
     
-    hft::order::Order market_order;
-    market_order.id = 3;
-    market_order.symbol = "AAPL";
-    market_order.side = hft::core::Side::BUY;
-    market_order.type = hft::core::OrderType::MARKET;
-    market_order.quantity = 50;
+    hft::order::Order sell_order(2, "AAPL", hft::core::Side::SELL,
+                                 hft::core::OrderType::LIMIT, 149.00, 50);
+    engine.submit_order(sell_order);
     
-    auto trades = engine.process_order(market_order);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    if (!trades.empty()) {
-        std::cout << "Trade: " << trades[0].quantity << "@" << trades[0].price << std::endl;
-    }
+    engine.stop();
+    
+    const auto& stats = engine.get_stats();
+    std::cout << "Orders: " << stats.orders_processed << std::endl;
+    std::cout << "Matched: " << stats.orders_matched << std::endl;
     
     return 0;
 }
