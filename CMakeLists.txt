@@ -50,6 +50,7 @@ set(CORE_SOURCES
     src/core/redis_client.cpp
     src/core/arm64_clock.cpp
     src/core/admission_control.cpp
+    src/core/async_logger.cpp
 )
 
 # Order management

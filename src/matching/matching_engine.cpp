@@ -2,15 +2,27 @@
 #include "hft/core/clock.hpp"
 #include <algorithm>
 #include <sstream>
+#include <filesystem>
 namespace hft {
 namespace matching {
-MatchingEngine::MatchingEngine(MatchingAlgorithm algorithm)
+MatchingEngine::MatchingEngine(MatchingAlgorithm algorithm, const std::string& log_path)
     : algorithm_(algorithm)
 {
     incoming_orders_ = std::make_unique<core::LockFreeQueue<order::Order, ORDER_QUEUE_SIZE>>();
+    
+    // Initialize logger
+    logger_ = std::make_unique<core::AsyncLogger>(log_path, core::LogLevel::INFO);
+    logger_->start();
+    
+    logger_->info("MatchingEngine initialized with algorithm: " + 
+                  std::to_string(static_cast<int>(algorithm)), "ENGINE");
 }
 MatchingEngine::~MatchingEngine() {
     stop();
+    if (logger_) {
+        logger_->info("MatchingEngine shutting down", "ENGINE");
+        logger_->stop();
+    }
 }
 void MatchingEngine::set_execution_callback(ExecutionCallback callback) {
     execution_callback_ = std::move(callback);
@@ -26,22 +38,44 @@ void MatchingEngine::set_matching_algorithm(MatchingAlgorithm algorithm) {
 }
 void MatchingEngine::start() {
     if (running_.exchange(true)) {
+        if (logger_) {
+            logger_->warn("Attempted to start already running MatchingEngine", "ENGINE");
+        }
         return;
+    }
+    if (logger_) {
+        logger_->info("Starting MatchingEngine", "ENGINE");
     }
     matching_thread_ = std::thread(&MatchingEngine::matching_worker, this);
 }
 void MatchingEngine::stop() {
     if (!running_.exchange(false)) {
+        if (logger_) {
+            logger_->warn("Attempted to stop already stopped MatchingEngine", "ENGINE");
+        }
         return;
+    }
+    if (logger_) {
+        logger_->info("Stopping MatchingEngine", "ENGINE");
     }
     if (matching_thread_.joinable()) {
         matching_thread_.join();
     }
+    if (logger_) {
+        logger_->info("MatchingEngine stopped successfully", "ENGINE");
+    }
 }
 bool MatchingEngine::submit_order(const order::Order& order) {
+    if (logger_) {
+        logger_->log_order_received(order.id, order.symbol, order.price, order.quantity);
+    }
+    
     if (!validate_order(order)) {
         if (error_callback_) {
             error_callback_("VALIDATION_ERROR", "Order failed validation");
+        }
+        if (logger_) {
+            logger_->error("Order " + std::to_string(order.id) + " failed validation", "ORDER_MGMT");
         }
         stats_.orders_rejected.fetch_add(1);
         return false;
@@ -50,15 +84,25 @@ bool MatchingEngine::submit_order(const order::Order& order) {
         if (error_callback_) {
             error_callback_("RISK_CHECK_FAILED", "Order failed risk checks");
         }
+        if (logger_) {
+            logger_->error("Order " + std::to_string(order.id) + " failed risk checks", "ORDER_MGMT");
+        }
         stats_.orders_rejected.fetch_add(1);
         return false;
     }
     order::Order order_copy = order;
-    return incoming_orders_->enqueue(std::move(order_copy));
+    bool enqueued = incoming_orders_->enqueue(std::move(order_copy));
+    if (!enqueued && logger_) {
+        logger_->warn("Order queue full, order " + std::to_string(order.id) + " dropped", "ENGINE");
+    }
+    return enqueued;
 }
 bool MatchingEngine::cancel_order(core::OrderID order_id) {
     auto it = active_orders_.find(order_id);
     if (it == active_orders_.end()) {
+        if (logger_) {
+            logger_->warn("Attempted to cancel non-existent order " + std::to_string(order_id), "ORDER_MGMT");
+        }
         return false;
     }
     order::Order& order = it->second;
@@ -66,6 +110,9 @@ bool MatchingEngine::cancel_order(core::OrderID order_id) {
     auto* book = get_order_book(order.symbol);
     if (book) {
         book->cancel_order(order_id);
+    }
+    if (logger_) {
+        logger_->log_order_cancelled(order_id, "User requested");
     }
     ExecutionReport report(order);
     report.status = core::OrderStatus::CANCELLED;
@@ -125,16 +172,45 @@ std::vector<order::Order> MatchingEngine::get_orders_for_symbol(const core::Symb
 }
 void MatchingEngine::matching_worker() {
     order::Order incoming_order;
+    uint64_t processed_count = 0;
+    auto last_throughput_log = core::HighResolutionClock::now();
+    
+    if (logger_) {
+        logger_->info("Matching worker thread started", "ENGINE");
+    }
+    
     while (running_.load()) {
         if (incoming_orders_->dequeue(incoming_order)) {
             process_order(incoming_order);
+            processed_count++;
+            
+            // Log throughput every 10,000 messages or every 1 second
+            auto now = core::HighResolutionClock::now();
+            auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_throughput_log).count();
+            if (processed_count >= 10000 || elapsed_ns >= 1000000000) {
+                uint64_t msgs_per_sec = processed_count * 1000000000ULL / elapsed_ns;
+                if (logger_) {
+                    logger_->log_throughput_measurement(msgs_per_sec, stats_.orders_processed.load());
+                }
+                processed_count = 0;
+                last_throughput_log = now;
+            }
         } else {
             std::this_thread::yield();
         }
     }
+    
+    if (logger_) {
+        logger_->info("Matching worker thread stopped", "ENGINE");
+    }
 }
 void MatchingEngine::process_order(const order::Order& order) {
     const auto start_time = core::HighResolutionClock::rdtsc();
+    
+    if (logger_) {
+        logger_->debug("Processing order " + std::to_string(order.id) + " for symbol " + order.symbol, "ENGINE");
+    }
+    
     order::OrderBook& book = get_or_create_order_book(order.symbol);
     active_orders_[order.id] = order;
     order::Order& active_order = active_orders_[order.id];
@@ -165,8 +241,18 @@ void MatchingEngine::process_order(const order::Order& order) {
     double latency_ns = static_cast<double>(end_time - start_time) / 2.5;
     update_matching_latency(latency_ns);
     stats_.orders_processed.fetch_add(1);
+    
+    if (logger_) {
+        logger_->log_latency_measurement("order_processing", latency_ns);
+    }
+    
     if (!fills.empty()) {
         stats_.orders_matched.fetch_add(1);
+        if (logger_) {
+            for (const auto& fill : fills) {
+                logger_->log_order_matched(fill.aggressive_order_id, fill.quantity, fill.price);
+            }
+        }
     }
     if (execution_callback_) {
         execution_callback_(execution_report);

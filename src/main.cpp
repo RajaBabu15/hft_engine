@@ -76,7 +76,8 @@ private:
     
 public:
     IntegratedHFTEngine() 
-        : matching_engine_(std::make_unique<hft::matching::MatchingEngine>())
+        : matching_engine_(std::make_unique<hft::matching::MatchingEngine>(
+            hft::matching::MatchingAlgorithm::PRICE_TIME_PRIORITY, "logs/engine_logs.log"))
         , fix_parser_(std::make_unique<hft::fix::FixParser>(FIX_PARSER_THREADS))
         , redis_client_(std::make_unique<hft::core::HighPerformanceRedisClient>())
         , admission_controller_(std::make_unique<hft::core::AdmissionControlEngine>())
@@ -101,9 +102,9 @@ public:
     }
     
     void start() {
-        std::cout << "[LOG] Starting HFT components..." << std::endl;
+        std::cout << "[LOG] Starting HFT components with async logging..." << std::endl;
         matching_engine_->start();
-        std::cout << "[LOG] Matching engine started" << std::endl;
+        std::cout << "[LOG] Matching engine started with async logger (logs/engine_logs.log)" << std::endl;
         fix_parser_->start();
         std::cout << "[LOG] FIX parser started" << std::endl;
     }
@@ -250,6 +251,8 @@ public:
         std::cout << "redis_ops = " << redis_stats.total_operations << std::endl;
         std::cout << "redis_latency_us = " << std::fixed << std::setprecision(1) 
                  << redis_stats.avg_redis_latency_us << std::endl;
+        std::cout << "async_logging_enabled = true" << std::endl;
+        std::cout << "log_file = logs/engine_logs.log" << std::endl;
         std::cout << "claims_verified = true" << std::endl;
     }
 };

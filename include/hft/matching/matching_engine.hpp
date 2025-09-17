@@ -1,6 +1,7 @@
 #pragma once
 #include "hft/core/types.hpp"
 #include "hft/core/lock_free_queue.hpp"
+#include "hft/core/async_logger.hpp"
 #include "hft/order/order.hpp"
 #include "hft/order/order_book.hpp"
 #include <memory>
@@ -92,8 +93,10 @@ private:
     MatchingStats stats_;
     std::unordered_map<core::OrderID, order::Order> active_orders_;
     std::atomic<core::OrderID> next_execution_id_{1};
+    std::unique_ptr<core::AsyncLogger> logger_;
 public:
-    explicit MatchingEngine(MatchingAlgorithm algorithm = MatchingAlgorithm::PRICE_TIME_PRIORITY);
+    explicit MatchingEngine(MatchingAlgorithm algorithm = MatchingAlgorithm::PRICE_TIME_PRIORITY, 
+                           const std::string& log_path = "logs/engine_logs.log");
     ~MatchingEngine();
     MatchingEngine(const MatchingEngine&) = delete;
     MatchingEngine& operator=(const MatchingEngine&) = delete;
