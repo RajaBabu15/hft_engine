@@ -15,14 +15,23 @@ find_package(Threads REQUIRED)
 # Compiler Flags and Optimizations
 # ============================================================================
 
+# Advanced optimization flags (Clang-compatible)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops -finline-functions -ffast-math")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fomit-frame-pointer -pthread")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fvectorize -fslp-vectorize")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNUMA_AWARE -DASYNC_OPTIMIZED")
+
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -Wall -Wextra")
 
-# Platform specific optimizations
+# Platform specific optimizations with CPU-specific tuning
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -mtune=native")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=native")
+    # Apple Silicon specific optimizations
+    if(APPLE)
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -arch arm64")
+    endif()
 endif()
 
 # ============================================================================
@@ -81,15 +90,34 @@ set(ALL_SOURCES
 
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
+# Enable LTO if supported
+include(CheckIPOSupported)
+check_ipo_supported(RESULT lto_supported OUTPUT lto_error)
+if(lto_supported)
+    message(STATUS "IPO/LTO enabled")
+    set_property(TARGET ${PROJECT_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+else()
+    message(STATUS "IPO/LTO not supported: ${lto_error}")
+endif()
 
 # ============================================================================
 # Linking
 # ============================================================================
 
+# Link libraries with optimization support
 target_link_libraries(${PROJECT_NAME} 
     ${CMAKE_THREAD_LIBS_INIT}
     /opt/homebrew/lib/libhiredis.dylib
 )
+
+# Add OpenMP support if available
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+    message(STATUS "OpenMP support: ENABLED")
+else()
+    message(STATUS "OpenMP support: DISABLED")
+endif()
 
 
 
