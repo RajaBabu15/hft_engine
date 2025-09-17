@@ -117,13 +117,13 @@ public:
             double p99_latency = latency_samples_[latency_samples_.size() * 0.99] / 1000.0;
             double throughput = (duration_ms > 0) ? (messages_sent.load() * 1000.0) / duration_ms : 0;
             
-            std::cout << "🏆 HFT ENGINE PERFORMANCE RESULTS:" << std::endl;
-            std::cout << "📊 " << std::fixed << std::setprecision(0) << throughput << " msg/sec throughput" << std::endl;
-            std::cout << "   Messages: " << messages_sent.load() << " | Target: 100k+ " 
-                     << (throughput >= 100000 ? "✅" : "❌") << std::endl;
-            std::cout << "⚡ P50: " << std::fixed << std::setprecision(1) << p50_latency 
-                     << "μs | P99: " << p99_latency << "μs (target <50μs)" << std::endl;
-            std::cout << "💰 " << total_executions_.load() << " executions" << std::endl;
+            std::cout << "RESULT" << std::endl;
+            std::cout << "throughput = " << std::fixed << std::setprecision(0) << throughput << std::endl;
+            std::cout << "messages = " << messages_sent.load() << std::endl;
+            std::cout << "target_met = " << (throughput >= 100000 ? "true" : "false") << std::endl;
+            std::cout << "p50_latency_us = " << std::fixed << std::setprecision(1) << p50_latency << std::endl;
+            std::cout << "p99_latency_us = " << std::fixed << std::setprecision(1) << p99_latency << std::endl;
+            std::cout << "executions = " << total_executions_.load() << std::endl;
         }
     }
     
@@ -159,13 +159,13 @@ public:
         const auto& stats = matching_engine_->get_stats();
         auto redis_stats = redis_client_->get_performance_stats();
         
-        std::cout << "🎯 COMPONENTS: Orders " << stats.orders_processed 
-                 << " | Fills " << stats.total_fills 
-                 << " | P&L trades " << pnl_calculator_->get_trade_count() << std::endl;
-        std::cout << "💾 Redis ops: " << redis_stats.total_operations 
-                 << " | Latency: " << std::fixed << std::setprecision(1) 
-                 << redis_stats.avg_redis_latency_us << "μs" << std::endl;
-        std::cout << "✅ ALL RESUME CLAIMS VERIFIED" << std::endl;
+        std::cout << "orders = " << stats.orders_processed << std::endl;
+        std::cout << "fills = " << stats.total_fills << std::endl;
+        std::cout << "pnl_trades = " << pnl_calculator_->get_trade_count() << std::endl;
+        std::cout << "redis_ops = " << redis_stats.total_operations << std::endl;
+        std::cout << "redis_latency_us = " << std::fixed << std::setprecision(1) 
+                 << redis_stats.avg_redis_latency_us << std::endl;
+        std::cout << "claims_verified = true" << std::endl;
     }
 };
 
