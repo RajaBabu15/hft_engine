@@ -1,20 +1,68 @@
 #include "hft/order/order_book.hpp"
 namespace hft {
 namespace order {
-OrderBook::OrderBook(const core::Symbol& symbol)
-    : symbol_(symbol), best_bid_(0.0), best_ask_(0.0), best_prices_valid_(false) {}
+OrderBook::OrderBook(const core::Symbol& symbol, bool use_segment_tree)
+    : symbol_(symbol), best_bid_(0.0), best_ask_(0.0), best_prices_valid_(false), use_segment_tree_(use_segment_tree) {
+    if (use_segment_tree_) {
+        bid_segment_tree_ = std::make_unique<core::MemoryOptimizedSegmentTree<PriceLevel>>();
+        ask_segment_tree_ = std::make_unique<core::MemoryOptimizedSegmentTree<PriceLevel>>();
+    }
+}
 void OrderBook::update_best_prices() const {
-    best_bid_ = bid_levels_.empty() ? 0.0 : bid_levels_.begin()->first;
-    best_ask_ = ask_levels_.empty() ? 0.0 : ask_levels_.begin()->first;
+    if (use_segment_tree_) {
+        update_best_prices_segment_tree();
+    } else {
+        best_bid_ = bid_levels_.empty() ? 0.0 : bid_levels_.begin()->first;
+        best_ask_ = ask_levels_.empty() ? 0.0 : ask_levels_.begin()->first;
+        best_prices_valid_ = true;
+    }
+}
+
+void OrderBook::update_best_prices_segment_tree() const {
+    auto best_bid = bid_segment_tree_->get_best_bid();
+    auto best_ask = ask_segment_tree_->get_best_ask();
+    
+    best_bid_ = best_bid.first;
+    best_ask_ = best_ask.first;
     best_prices_valid_ = true;
 }
 bool OrderBook::add_order(const Order& order) {
     orders_[order.id] = order;
-    if (order.side == core::Side::BUY) {
-        bid_levels_[order.price].add_order(order.id, order.quantity);
+    
+    if (use_segment_tree_) {
+        // Segment tree implementation
+        if (order.side == core::Side::BUY) {
+            auto level_result = bid_segment_tree_->get_price_level(order.price);
+            if (level_result.first) {
+                PriceLevel existing_level = level_result.second;
+                existing_level.add_order(order.id, order.quantity);
+                bid_segment_tree_->update_price_level(order.price, existing_level);
+            } else {
+                PriceLevel new_level(order.price);
+                new_level.add_order(order.id, order.quantity);
+                bid_segment_tree_->insert_price_level(order.price, new_level);
+            }
+        } else {
+            auto level_result = ask_segment_tree_->get_price_level(order.price);
+            if (level_result.first) {
+                PriceLevel existing_level = level_result.second;
+                existing_level.add_order(order.id, order.quantity);
+                ask_segment_tree_->update_price_level(order.price, existing_level);
+            } else {
+                PriceLevel new_level(order.price);
+                new_level.add_order(order.id, order.quantity);
+                ask_segment_tree_->insert_price_level(order.price, new_level);
+            }
+        }
     } else {
-        ask_levels_[order.price].add_order(order.id, order.quantity);
+        // Legacy std::map implementation
+        if (order.side == core::Side::BUY) {
+            bid_levels_[order.price].add_order(order.id, order.quantity);
+        } else {
+            ask_levels_[order.price].add_order(order.id, order.quantity);
+        }
     }
+    
     best_prices_valid_ = false;
     return true;
 }

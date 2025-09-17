@@ -195,11 +195,7 @@ private:
     void exit_position(const core::Symbol& symbol, double price);
 };
 class TickReplayEngine {
-private:
-    std::unique_ptr<MarketDataParser> data_parser_;
-    std::unique_ptr<matching::MatchingEngine> matching_engine_;
-    std::unique_ptr<analytics::PnLCalculator> pnl_calculator_;
-    std::vector<std::unique_ptr<BacktestingStrategy>> strategies_;
+public:
     struct ReplayConfig {
         core::TimePoint start_time = core::TimePoint::min();
         core::TimePoint end_time = core::TimePoint::max();
@@ -208,7 +204,14 @@ private:
         double commission_rate = 0.001;
         bool print_progress = true;
         size_t progress_interval = 100000;
-    } config_;
+    };
+    
+private:
+    std::unique_ptr<MarketDataParser> data_parser_;
+    std::unique_ptr<matching::MatchingEngine> matching_engine_;
+    std::unique_ptr<analytics::PnLCalculator> pnl_calculator_;
+    std::vector<std::unique_ptr<BacktestingStrategy>> strategies_;
+    ReplayConfig config_;
     core::TimePoint current_replay_time_;
     size_t ticks_processed_;
     std::chrono::steady_clock::time_point replay_start_time_;

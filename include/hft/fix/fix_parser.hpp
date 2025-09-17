@@ -8,6 +8,7 @@
 #include <atomic>
 #include <memory>
 #include <functional>
+#include <mutex>
 namespace hft {
 namespace fix {
 constexpr char FIX_SOH = '\001';
@@ -75,6 +76,9 @@ struct FixParserStats {
     std::atomic<uint64_t> invalid_messages{0};
     std::atomic<uint64_t> bytes_processed{0};
     std::atomic<double> avg_parse_time_ns{0.0};
+    std::atomic<uint64_t> queue_full_events{0};
+    std::atomic<uint64_t> messages_dropped{0};
+    std::atomic<uint64_t> callback_errors{0};
     void reset() {
         messages_parsed = 0;
         parse_errors = 0;
@@ -82,6 +86,9 @@ struct FixParserStats {
         invalid_messages = 0;
         bytes_processed = 0;
         avg_parse_time_ns = 0.0;
+        queue_full_events = 0;
+        messages_dropped = 0;
+        callback_errors = 0;
     }
 };
 class FixParser {
@@ -89,8 +96,8 @@ public:
     using MessageCallback = std::function<void(const FixMessage&)>;
     using ErrorCallback = std::function<void(const std::string&, const std::string&)>;
 private:
-    static constexpr size_t PARSER_QUEUE_SIZE = 4096;
-    static constexpr size_t MAX_WORKER_THREADS = 8;
+    static constexpr size_t PARSER_QUEUE_SIZE = 16384;  // Increased for high throughput
+    static constexpr size_t MAX_WORKER_THREADS = 4;    // Conservative limit to prevent resource exhaustion
     std::atomic<bool> running_{false};
     size_t num_worker_threads_;
     std::vector<std::thread> worker_threads_;
@@ -101,6 +108,8 @@ private:
     FixParserStats stats_;
     std::string message_buffer_;
     size_t buffer_position_;
+    mutable std::mutex buffer_mutex_;
+    mutable std::mutex callback_mutex_;
 public:
     explicit FixParser(size_t num_workers = 4);
     ~FixParser();
