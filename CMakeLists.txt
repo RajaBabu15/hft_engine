@@ -10,7 +10,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find required packages
 find_package(Threads REQUIRED)
-find_package(Python3 COMPONENTS Interpreter)
 
 # ============================================================================
 # Compiler Flags and Optimizations
@@ -124,8 +123,3 @@ message(STATUS "HFT Trading Engine v${PROJECT_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "System: ${CMAKE_SYSTEM_PROCESSOR}")
 
-if(Python3_FOUND)
-    message(STATUS "Python support: ON")
-else()
-    message(STATUS "Python support: OFF")
-endif()
